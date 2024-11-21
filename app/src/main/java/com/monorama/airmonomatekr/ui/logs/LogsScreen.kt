@@ -17,12 +17,12 @@ fun LogsScreen() {
             .padding(16.dp)
     ) {
         Text(
-            text = "데이터 로그",
+            text = "Data Logs",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        // 임시 데이터
+        // Sample data
         val logs = remember {
             List(10) { index ->
                 "Log ${index + 1}" to "2024-03-${20 + index} 14:${30 + index}:00"

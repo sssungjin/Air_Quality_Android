@@ -5,7 +5,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.monorama.airmonomatekr.ui.settings.components.SettingItem
 
 @Composable
 fun SettingsScreen() {
@@ -18,7 +17,7 @@ fun SettingsScreen() {
             .padding(16.dp)
     ) {
         Text(
-            text = "설정",
+            text = "Settings",
             style = MaterialTheme.typography.headlineMedium,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -34,7 +33,7 @@ fun SettingsScreen() {
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("사용자 이름") },
+                    label = { Text("Username") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp)
@@ -43,7 +42,7 @@ fun SettingsScreen() {
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
-                    label = { Text("이메일") },
+                    label = { Text("Email") },
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(vertical = 8.dp)
@@ -55,7 +54,7 @@ fun SettingsScreen() {
                     onClick = { /* TODO: Save settings */ },
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("저장")
+                    Text("Save")
                 }
             }
         }
@@ -69,12 +68,12 @@ fun SettingsScreen() {
                 modifier = Modifier.padding(16.dp)
             ) {
                 Text(
-                    text = "프로젝트 정보",
+                    text = "Project Information",
                     style = MaterialTheme.typography.titleMedium,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
                 Text(
-                    text = "Air Monomate KR\n버전 1.0.0\n\n공기질 모니터링 시스템",
+                    text = "Air Monomate KR\nVersion 1.0.0\n\nAir Quality Monitoring System",
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
