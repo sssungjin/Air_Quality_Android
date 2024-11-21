@@ -3,6 +3,8 @@ package com.monorama.airmonomatekr.ui.home
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -25,6 +27,9 @@ fun HomeScreen(
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
     var showDeviceList by remember { mutableStateOf(false) }
+
+    // 센서 데이터 상태 추가
+    val sensorData by viewModel.sensorData.collectAsState()
 
     Column(
         modifier = Modifier
@@ -78,69 +83,111 @@ fun HomeScreen(
                     showDeviceList = false
                     viewModel.stopScan()
                 },
-                title = { Text("Available Devices") },
+                title = { Text("Available Devices (${discoveredDevices.size})") },
                 text = {
-                    Column {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 400.dp)
+                            .verticalScroll(rememberScrollState())
+                    ) {
+                        // 스캔 중 표시
                         if (isScanning) {
                             LinearProgressIndicator(
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Text(
-                                text = "Scanning for devices...",
-                                modifier = Modifier.padding(vertical = 8.dp)
-                            )
-                        }
-                        
-                        if (discoveredDevices.isEmpty()) {
-                            Text(
-                                text = if (isScanning) 
-                                    "No devices found yet..." 
-                                else 
-                                    "No devices found. Make sure your device is nearby and discoverable.",
+                                text = if (discoveredDevices.isEmpty())
+                                    "Scanning for devices..."
+                                else
+                                    "Found ${discoveredDevices.size} device(s)",
                                 modifier = Modifier.padding(vertical = 8.dp)
                             )
                         }
 
+                        // 발견된 디바이스 목록
                         discoveredDevices.forEach { device ->
-                            TextButton(
+                            Button(
                                 onClick = {
                                     viewModel.connectToDevice(device)
                                     showDeviceList = false
                                     viewModel.stopScan()
                                 },
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
                             ) {
-                                if (ActivityCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.BLUETOOTH_CONNECT
-                                    ) == PackageManager.PERMISSION_GRANTED
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.Start
                                 ) {
+                                    if (ActivityCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.BLUETOOTH_CONNECT
+                                        ) != PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        // TODO: Consider calling
+                                        //    ActivityCompat#requestPermissions
+                                        // here to request the missing permissions, and then overriding
+                                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                                        //                                          int[] grantResults)
+                                        // to handle the case where the user grants the permission. See the documentation
+                                        // for ActivityCompat#requestPermissions for more details.
+
+                                    }
                                     Text(
-                                        "${device.name ?: "Unknown Device"}\n" +
-                                        "(${device.address})"
+                                        text = device.name ?: "Unknown Device",
+                                        style = MaterialTheme.typography.titleMedium
+                                    )
+                                    Text(
+                                        text = device.address,
+                                        style = MaterialTheme.typography.bodySmall
                                     )
                                 }
+                            }
+                        }
+
+                        // 디바이스를 찾지 못했을 때 메시지
+                        if (discoveredDevices.isEmpty()) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isScanning)
+                                        "Searching for devices..."
+                                    else
+                                        "No devices found.\nMake sure your device is nearby and discoverable.",
+                                    textAlign = TextAlign.Center,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
                             }
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = {
-                        if (isScanning) {
-                            viewModel.stopScan()
-                        } else {
-                            viewModel.startScan()
+                    TextButton(
+                        onClick = {
+                            if (isScanning) {
+                                viewModel.stopScan()
+                            } else {
+                                viewModel.startScan()
+                            }
                         }
-                    }) {
+                    ) {
                         Text(if (isScanning) "Stop Scan" else "Rescan")
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = {
-                        showDeviceList = false
-                        viewModel.stopScan()
-                    }) {
-                        Text("Cancel")
+                    TextButton(
+                        onClick = {
+                            showDeviceList = false
+                            viewModel.stopScan()
+                        }
+                    ) {
+                        Text("Close")
                     }
                 }
             )
@@ -156,39 +203,52 @@ fun HomeScreen(
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            SensorDataCard(
-                title = "Fine Dust (PM2.5)",
-                value = "25",
-                unit = "μg/m³",
-                level = 1
-            )
+            // 실제 센서 데이터 표시
+            sensorData?.let { data ->
+                SensorDataCard(
+                    title = "Fine Dust (PM2.5)",
+                    value = data.pm25.value.toString(),
+                    unit = "μg/m³",
+                    level = data.pm25.level
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            SensorDataCard(
-                title = "Carbon Dioxide (CO2)",
-                value = "450",
-                unit = "ppm",
-                level = 0
-            )
+                SensorDataCard(
+                    title = "Carbon Dioxide (CO2)",
+                    value = data.co2.value.toString(),
+                    unit = "ppm",
+                    level = data.co2.level
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            SensorDataCard(
-                title = "Temperature",
-                value = "24.5",
-                unit = "°C",
-                level = 2
-            )
+                SensorDataCard(
+                    title = "Temperature",
+                    value = data.temperature.value.toString(),
+                    unit = "°C",
+                    level = data.temperature.level
+                )
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-            SensorDataCard(
-                title = "Humidity",
-                value = "45",
-                unit = "%",
-                level = 3
-            )
+                SensorDataCard(
+                    title = "Humidity",
+                    value = data.humidity.value.toString(),
+                    unit = "%",
+                    level = data.humidity.level
+                )
+            } ?: run {
+                // 연결은 되었지만 데이터가 아직 없는 경우
+                CircularProgressIndicator(
+                    modifier = Modifier.padding(16.dp)
+                )
+                Text(
+                    text = "Waiting for sensor data...",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center
+                )
+            }
         } else {
             // 연결되지 않은 상태일 때 메시지 표시
             Box(

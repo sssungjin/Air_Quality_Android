@@ -9,13 +9,13 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import android.os.ParcelUuid
 import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
+import com.monorama.airmonomatekr.data.repository.SensorData
 import com.monorama.airmonomatekr.util.PermissionHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.util.*
 
 class BleManager(private val context: Context) {
@@ -24,8 +24,8 @@ class BleManager(private val context: Context) {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
     }
 
-    private val _sensorData = MutableStateFlow<ByteArray?>(null)
-    val sensorData: StateFlow<ByteArray?> = _sensorData
+    private val _sensorData = MutableStateFlow<SensorData?>(null)
+    val sensorData: StateFlow<SensorData?> = _sensorData.asStateFlow()
 
     private val bluetoothLeScanner by lazy {
         bluetoothAdapter?.bluetoothLeScanner
@@ -52,56 +52,177 @@ class BleManager(private val context: Context) {
 
     private val scanCallback = object : ScanCallback() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
+            println("BleManager: Scan result received")
+            println("BleManager: Device name: ${result.device.name}")
+            println("BleManager: Device address: ${result.device.address}")
+            println("BleManager: Device RSSI: ${result.rssi}")
+
             val device = result.device
-            if (ActivityCompat.checkSelfPermission(
+            // SDK 28에서는 BLUETOOTH_CONNECT 권한 체크를 완전히 건너뜀
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || 
+                ActivityCompat.checkSelfPermission(
                     context,
                     Manifest.permission.BLUETOOTH_CONNECT
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
                 device.name?.let { name ->
                     if (name == DEVICE_NAME) {
-                        println("Found device: $name (${device.address})")
-                        discoveredDevices.add(device)
-                        currentScanCallback?.invoke(discoveredDevices.toList())
+                        println("BleManager: Found Bandi-Pico device!")
+                        if (!discoveredDevices.any { it.address == device.address }) {
+                            discoveredDevices.add(device)
+                            println("BleManager: Added device to list. Current devices: ${discoveredDevices.map { it.name }}")
+                            currentScanCallback?.invoke(discoveredDevices.toList())
+                        }
                     }
                 }
             }
         }
 
         override fun onScanFailed(errorCode: Int) {
-            println("BLE Scan Failed: Error Code $errorCode")
+            println("BleManager: Scan failed with error code: $errorCode")
             when (errorCode) {
-                SCAN_FAILED_ALREADY_STARTED -> println("Scan already started")
-                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> println("Application registration failed")
-                SCAN_FAILED_FEATURE_UNSUPPORTED -> println("BLE scanning not supported")
-                SCAN_FAILED_INTERNAL_ERROR -> println("Internal error")
-                else -> println("Unknown error")
+                SCAN_FAILED_ALREADY_STARTED -> println("BleManager: Scan already started")
+                SCAN_FAILED_APPLICATION_REGISTRATION_FAILED -> println("BleManager: Application registration failed")
+                SCAN_FAILED_FEATURE_UNSUPPORTED -> println("BleManager: BLE scanning not supported")
+                SCAN_FAILED_INTERNAL_ERROR -> println("BleManager: Internal error")
+                else -> println("BleManager: Unknown error")
             }
         }
     }
 
+    private val discoveredDevices = mutableSetOf<BluetoothDevice>()
+    private var currentScanCallback: ((List<BluetoothDevice>) -> Unit)? = null
+
+    private val gattCallback = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            println("BleManager: Connection state changed - status: $status, newState: $newState")
+
+            when (status) {
+                BluetoothGatt.GATT_SUCCESS -> {
+                    when (newState) {
+                        BluetoothProfile.STATE_CONNECTED -> {
+                            println("BleManager: Successfully connected to GATT server")
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.BLUETOOTH_CONNECT
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                println("BleManager: Discovering services...")
+                                // 서비스 발견 지연 추가
+                                Thread.sleep(600)
+                                gatt.discoverServices()
+                            }
+                        }
+                        BluetoothProfile.STATE_DISCONNECTED -> {
+                            println("BleManager: Disconnected from GATT server")
+                            bluetoothGatt = null
+                            _sensorData.value = null
+                        }
+                    }
+                }
+                else -> {
+                    println("BleManager: Connection state change failed with status: $status")
+                    bluetoothGatt?.close()
+                    bluetoothGatt = null
+                    _sensorData.value = null
+                }
+            }
+        }
+
+        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                println("BleManager: Services discovered successfully")
+                println("BleManager: Found ${gatt.services.size} services")
+                gatt.services.forEach { service ->
+                    println("BleManager: Service: ${service.uuid}")
+                }
+                enableSensors(gatt)
+                setupNotifications(gatt)
+            } else {
+                println("BleManager: Service discovery failed with status: $status")
+            }
+        }
+    }
+
+    private fun parseSensorData(value: ByteArray) {
+        if (value.size < 18) return
+
+        try {
+            val data = SensorData(
+                pm25 = SensorData.SensorValue(
+                    value = ((value[0].toInt() and 0xFF) shl 8 or (value[1].toInt() and 0xFF)).toFloat(),
+                    level = value[2].toInt() and 0xFF
+                ),
+                pm10 = SensorData.SensorValue(
+                    value = ((value[3].toInt() and 0xFF) shl 8 or (value[4].toInt() and 0xFF)).toFloat(),
+                    level = value[5].toInt() and 0xFF
+                ),
+                temperature = SensorData.SensorValue(
+                    value = ((value[6].toInt() and 0xFF) shl 8 or (value[7].toInt() and 0xFF)) / 10.0f,
+                    level = value[8].toInt() and 0xFF
+                ),
+                humidity = SensorData.SensorValue(
+                    value = ((value[9].toInt() and 0xFF) shl 8 or (value[10].toInt() and 0xFF)) / 10.0f,
+                    level = value[11].toInt() and 0xFF
+                ),
+                co2 = SensorData.SensorValue(
+                    value = ((value[12].toInt() and 0xFF) shl 8 or (value[13].toInt() and 0xFF)).toFloat(),
+                    level = value[14].toInt() and 0xFF
+                ),
+                voc = SensorData.SensorValue(
+                    value = ((value[15].toInt() and 0xFF) shl 8 or (value[16].toInt() and 0xFF)).toFloat(),
+                    level = value[17].toInt() and 0xFF
+                )
+            )
+            _sensorData.value = data
+            println("BleManager: Parsed sensor data: $data")
+        } catch (e: Exception) {
+            println("Error parsing sensor data: ${e.message}")
+        }
+    }
+
     fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
-        if (!PermissionHelper.hasBluetoothPermissions(context)) {
-            println("Bluetooth permissions not granted")
+        println("BleManager: Starting scan...")
+
+        // Android 버전에 따른 권한 체크
+        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED ||
+            ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+        }
+
+        if (!hasPermission) {
+            println("BleManager: Required permission not granted")
             return
         }
 
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        if (bluetoothManager.adapter?.isEnabled != true) {
-            println("Bluetooth is not enabled")
+        if (!bluetoothManager.adapter?.isEnabled!!) {
+            println("BleManager: Bluetooth is not enabled")
             return
         }
 
         discoveredDevices.clear()
         currentScanCallback = onDevicesFound
 
-        if (ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            println("Starting BLE scan...")
+        println("BleManager: Starting BLE scan with settings: ${scanSettings.scanMode}")
+
+        try {
             bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            println("BleManager: Scan started successfully")
+        } catch (e: Exception) {
+            println("BleManager: Failed to start scan: ${e.message}")
+            e.printStackTrace()
         }
     }
 
@@ -112,54 +233,23 @@ class BleManager(private val context: Context) {
             ) == PackageManager.PERMISSION_GRANTED
         ) {
             bluetoothLeScanner?.stopScan(scanCallback)
+            println("BleManager: Scan stopped")
         }
         currentScanCallback = null
     }
 
-    private val discoveredDevices = mutableSetOf<BluetoothDevice>()
-    private var currentScanCallback: ((List<BluetoothDevice>) -> Unit)? = null
-
-    private val gattCallback = object : BluetoothGattCallback() {
-        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
-            when (newState) {
-                BluetoothProfile.STATE_CONNECTED -> {
-                    if (PermissionHelper.hasBluetoothPermissions(context)) {
-                        if (ActivityCompat.checkSelfPermission(
-                                context,  // this를 context로 변경
-                                Manifest.permission.BLUETOOTH_CONNECT
-                            ) != PackageManager.PERMISSION_GRANTED
-                        ) {
-                            return
-                        }
-                        gatt.discoverServices()
-                    }
-                }
-                BluetoothProfile.STATE_DISCONNECTED -> {
-                    bluetoothGatt = null
-                }
-            }
-        }
-
-        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-        override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                enableSensors(gatt)
-            }
-        }
-
-        override fun onCharacteristicChanged(
-            gatt: BluetoothGatt,
-            characteristic: BluetoothGattCharacteristic,
-            value: ByteArray
-        ) {
-            _sensorData.value = value
-        }
-    }
-
     fun connect(deviceAddress: String): Boolean {
-        // 필요한 모든 권한 체크
+        println("BleManager: Attempting to connect to device: $deviceAddress")
+
         if (!PermissionHelper.hasRequiredPermissions(context)) {
+            println("BleManager: Required permissions not granted")
             throw SecurityException("Required permissions are not granted")
+        }
+
+        // 기존 연결이 있다면 해제
+        bluetoothGatt?.let {
+            println("BleManager: Disconnecting from previous connection")
+            disconnect()
         }
 
         bluetoothAdapter?.let { adapter ->
@@ -170,17 +260,54 @@ class BleManager(private val context: Context) {
                         Manifest.permission.BLUETOOTH_CONNECT
                     ) == PackageManager.PERMISSION_GRANTED
                 ) {
-                    bluetoothGatt = device.connectGatt(context, false, gattCallback)
+                    println("BleManager: Connecting to device: ${device.address}")
+                    // autoConnect를 true로 설정하여 연결 안정성 향상
+                    bluetoothGatt = device.connectGatt(context, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
                     return true
+                } else {
+                    println("BleManager: BLUETOOTH_CONNECT permission not granted")
                 }
             } catch (e: IllegalArgumentException) {
+                println("BleManager: Failed to connect: ${e.message}")
                 return false
             }
         }
+        println("BleManager: BluetoothAdapter not available")
         return false
     }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+
+    private fun setupNotifications(gatt: BluetoothGatt) {
+        if (!PermissionHelper.hasBluetoothPermissions(context)) {
+            return
+        }
+
+        try {
+            gatt.getService(UUID.fromString("0000ffb0-0000-1000-8000-00805f9b34fb"))?.let { service ->
+                service.getCharacteristic(UUID.fromString("0000ffb3-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
+                    println("BleManager: Setting up notifications for sensor data")
+                    if (ActivityCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.BLUETOOTH_CONNECT
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        // TODO: Consider calling
+                        //    ActivityCompat#requestPermissions
+                        // here to request the missing permissions, and then overriding
+                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                        //                                          int[] grantResults)
+                        // to handle the case where the user grants the permission. See the documentation
+                        // for ActivityCompat#requestPermissions for more details.
+                        return
+                    }
+                    gatt.setCharacteristicNotification(characteristic, true)
+                }
+            }
+        } catch (e: Exception) {
+            println("BleManager: Error setting up notifications: ${e.message}")
+        }
+    }
+
     private fun enableSensors(gatt: BluetoothGatt) {
         if (!PermissionHelper.hasBluetoothPermissions(context)) {
             return
@@ -192,31 +319,62 @@ class BleManager(private val context: Context) {
             ) == PackageManager.PERMISSION_GRANTED
         ) {
             try {
+                // Enable dust sensor
                 gatt.getService(UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb"))?.let { service ->
                     service.getCharacteristic(UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                        println("Enabling dust sensor...")
-                        gatt.writeCharacteristic(characteristic, byteArrayOf(0x01),
-                            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                        println("BleManager: Enabling dust sensor")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            gatt.writeCharacteristic(
+                                characteristic,
+                                byteArrayOf(0x01),
+                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            )
+                        } else {
+                            // API 레벨 28용 레거시 방식
+                            characteristic.value = byteArrayOf(0x01)
+                            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            gatt.writeCharacteristic(characteristic)
+                        }
                     }
                 }
 
+                // Enable gas sensor
                 gatt.getService(UUID.fromString("0000ffd0-0000-1000-8000-00805f9b34fb"))?.let { service ->
                     service.getCharacteristic(UUID.fromString("0000ffd1-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                        println("Enabling gas sensor...")
-                        gatt.writeCharacteristic(characteristic, byteArrayOf(0x01),
-                            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                        println("BleManager: Enabling gas sensor")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            gatt.writeCharacteristic(
+                                characteristic,
+                                byteArrayOf(0x01),
+                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            )
+                        } else {
+                            characteristic.value = byteArrayOf(0x01)
+                            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            gatt.writeCharacteristic(characteristic)
+                        }
                     }
                 }
 
+                // Enable temperature/humidity sensor
                 gatt.getService(UUID.fromString("0000ffc0-0000-1000-8000-00805f9b34fb"))?.let { service ->
                     service.getCharacteristic(UUID.fromString("0000ffc1-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                        println("Enabling temperature/humidity sensor...")
-                        gatt.writeCharacteristic(characteristic, byteArrayOf(0x02),
-                            BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT)
+                        println("BleManager: Enabling temperature/humidity sensor")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            gatt.writeCharacteristic(
+                                characteristic,
+                                byteArrayOf(0x02),
+                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            )
+                        } else {
+                            characteristic.value = byteArrayOf(0x02)
+                            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                            gatt.writeCharacteristic(characteristic)
+                        }
                     }
                 }
             } catch (e: Exception) {
-                println("Error enabling sensors: ${e.message}")
+                println("BleManager: Error enabling sensors: ${e.message}")
             }
         }
     }
@@ -232,10 +390,11 @@ class BleManager(private val context: Context) {
                     Manifest.permission.BLUETOOTH_CONNECT
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
+                println("BleManager: Disconnecting from device")
                 gatt.disconnect()
                 gatt.close()
                 bluetoothGatt = null
             }
         }
     }
-} 
+}
