@@ -2,6 +2,8 @@ package com.monorama.airmonomatekr.service.bluetooth
 
 import android.Manifest
 import android.bluetooth.*
+import android.bluetooth.le.ScanCallback
+import android.bluetooth.le.ScanResult
 import android.content.Context
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
@@ -19,6 +21,37 @@ class BleManager(private val context: Context) {
 
     private val _sensorData = MutableStateFlow<ByteArray?>(null)
     val sensorData: StateFlow<ByteArray?> = _sensorData
+
+    private val bluetoothLeScanner by lazy {
+        bluetoothAdapter?.bluetoothLeScanner
+    }
+
+    private val scanCallback = object : ScanCallback() {
+        override fun onScanResult(callbackType: Int, result: ScanResult) {
+            val device = result.device
+            if (ActivityCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.BLUETOOTH_CONNECT
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // TODO: Consider calling
+                //    ActivityCompat#requestPermissions
+                // here to request the missing permissions, and then overriding
+                //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                //                                          int[] grantResults)
+                // to handle the case where the user grants the permission. See the documentation
+                // for ActivityCompat#requestPermissions for more details.
+                return
+            }
+            if (device.name != null) {
+                discoveredDevices.add(device)
+                currentScanCallback?.invoke(discoveredDevices.toList())
+            }
+        }
+    }
+
+    private val discoveredDevices = mutableSetOf<BluetoothDevice>()
+    private var currentScanCallback: ((List<BluetoothDevice>) -> Unit)? = null
 
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
@@ -142,5 +175,33 @@ class BleManager(private val context: Context) {
                 bluetoothGatt = null
             }
         }
+    }
+
+    fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
+        if (!PermissionHelper.hasBluetoothPermissions(context)) {
+            return
+        }
+
+        discoveredDevices.clear()
+        currentScanCallback = onDevicesFound
+
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            bluetoothLeScanner?.startScan(scanCallback)
+        }
+    }
+
+    fun stopScan() {
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_SCAN
+            ) == PackageManager.PERMISSION_GRANTED
+        ) {
+            bluetoothLeScanner?.stopScan(scanCallback)
+        }
+        currentScanCallback = null
     }
 } 

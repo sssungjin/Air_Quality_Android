@@ -1,5 +1,6 @@
 package com.monorama.airmonomatekr.data.repository
 
+import android.bluetooth.BluetoothDevice
 import com.monorama.airmonomatekr.service.bluetooth.ApiService
 import com.monorama.airmonomatekr.service.bluetooth.BleManager
 import javax.inject.Inject
@@ -34,5 +35,13 @@ class SensorRepository @Inject constructor(
         } catch (e: Exception) {
             // 에러 처리
         }
+    }
+
+    suspend fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
+        bleManager.startScan(onDevicesFound)
+    }
+
+    fun stopScan() {
+        bleManager.stopScan()
     }
 }

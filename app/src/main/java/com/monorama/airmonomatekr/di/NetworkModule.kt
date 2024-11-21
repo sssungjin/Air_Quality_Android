@@ -12,11 +12,14 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
+    private const val BASE_URL = "https://air.monomate.kr/api/v1/"
+    private const val WS_URL = "wss://air.monomate.kr/ws"
+
     @Provides
     @Singleton
     fun provideRetrofit(): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("YOUR_BASE_URL")  // 실제 baseUrl로 변경 필요
+            .baseUrl(BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
     }

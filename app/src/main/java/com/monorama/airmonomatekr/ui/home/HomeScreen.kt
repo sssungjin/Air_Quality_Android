@@ -1,23 +1,28 @@
 package com.monorama.airmonomatekr.ui.home
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.app.ActivityCompat
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.monorama.airmonomatekr.ui.home.components.SensorDataCard
-import com.monorama.airmonomatekr.ui.theme.BlueLevel
-import com.monorama.airmonomatekr.ui.theme.GreenLevel
-//import com.monorama.airmonomatekr.ui.theme.OrangeLevel
-import com.monorama.airmonomatekr.ui.theme.RedLevel
 
 @Composable
 fun HomeScreen(
-    isConnected: Boolean = false,
-    onConnectClick: () -> Unit = {},
-    onDisconnectClick: () -> Unit = {}
+    viewModel: HomeViewModel = hiltViewModel<HomeViewModel>()
 ) {
+    val context = LocalContext.current
+    val isScanning by viewModel.isScanning.collectAsState()
+    val discoveredDevices by viewModel.discoveredDevices.collectAsState()
+    val isConnected by viewModel.isConnected.collectAsState()
+    var showDeviceList by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -40,7 +45,14 @@ fun HomeScreen(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
-                    onClick = if (isConnected) onDisconnectClick else onConnectClick,
+                    onClick = {
+                        if (isConnected) {
+                            viewModel.disconnect()
+                        } else {
+                            showDeviceList = true
+                            viewModel.startScan()
+                        }
+                    },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isConnected) MaterialTheme.colorScheme.error
                                        else MaterialTheme.colorScheme.primary
@@ -49,6 +61,55 @@ fun HomeScreen(
                     Text(if (isConnected) "Disconnect" else "Connect")
                 }
             }
+        }
+
+        // 블루투스 디바이스 목록 다이얼로그
+        if (showDeviceList) {
+            AlertDialog(
+                onDismissRequest = {
+                    showDeviceList = false
+                    viewModel.stopScan()
+                },
+                title = { Text("Available Devices") },
+                text = {
+                    Column {
+                        if (isScanning) {
+                            LinearProgressIndicator(
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                        discoveredDevices.forEach { device ->
+                            TextButton(
+                                onClick = {
+                                    viewModel.connectToDevice(device)
+                                    showDeviceList = false
+                                    viewModel.stopScan()
+                                },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (ActivityCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.BLUETOOTH_CONNECT
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    Text(device.name ?: "Unknown Device")
+                                } else {
+                                    Text("Unknown Device")
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showDeviceList = false
+                        viewModel.stopScan()
+                    }) {
+                        Text("Cancel")
+                    }
+                }
+            )
         }
 
         Spacer(modifier = Modifier.height(16.dp))
