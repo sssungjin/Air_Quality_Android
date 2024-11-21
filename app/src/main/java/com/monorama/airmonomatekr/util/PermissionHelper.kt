@@ -7,32 +7,48 @@ import android.os.Build
 import androidx.core.content.ContextCompat
 
 object PermissionHelper {
-    val requiredPermissions =
+    val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(
-            // 기존 권한들
             Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.POST_NOTIFICATIONS,
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            // 포그라운드 서비스 관련 권한 추가
-            Manifest.permission.FOREGROUND_SERVICE,
-            Manifest.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE
+            Manifest.permission.BLUETOOTH_CONNECT
         )
+    } else {
+        arrayOf(
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.BLUETOOTH,
+            Manifest.permission.BLUETOOTH_ADMIN
+        )
+    }
 
     fun hasRequiredPermissions(context: Context): Boolean {
-        return requiredPermissions.all {
-            ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            hasBluetoothPermissions(context)
+        } else {
+            hasLegacyBluetoothPermissions(context)
         }
     }
 
-    // 권한 그룹별로 체크하는 유틸리티 메서드 추가
     fun hasBluetoothPermissions(context: Context): Boolean {
-        val bluetoothPermissions =
-            arrayOf(
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val bluetoothPermissions = arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT
             )
-        return bluetoothPermissions.all {
+            bluetoothPermissions.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            }
+        } else {
+            hasLegacyBluetoothPermissions(context)
+        }
+    }
+
+    private fun hasLegacyBluetoothPermissions(context: Context): Boolean {
+        val legacyPermissions = arrayOf(
+            Manifest.permission.ACCESS_COARSE_LOCATION,
+            Manifest.permission.BLUETOOTH,
+            Manifest.permission.BLUETOOTH_ADMIN
+        )
+        return legacyPermissions.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
     }

@@ -1,7 +1,11 @@
 package com.monorama.airmonomatekr
 
+import android.Manifest
+import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
@@ -20,7 +24,10 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.core.content.ContextCompat
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -30,38 +37,30 @@ import com.monorama.airmonomatekr.ui.logs.LogsScreen
 import com.monorama.airmonomatekr.ui.navigation.Screen
 import com.monorama.airmonomatekr.ui.settings.SettingsScreen
 import com.monorama.airmonomatekr.ui.theme.AirmonomatekrTheme
-import com.monorama.airmonomatekr.util.PermissionHelper
-import com.monorama.airmonomatekr.ui.components.PermissionDialog
-import androidx.compose.runtime.*
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // ActivityResultLauncher 초기화
     private lateinit var permissionLauncher: ActivityResultLauncher<Array<String>>
+    private var showBluetoothDialog by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 권한 요청 런처 초기화
         permissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) { permissions ->
             val allGranted = permissions.entries.all { it.value }
-            handlePermissionResult(allGranted)
+            if (!allGranted) {
+                showBluetoothDialog = true
+            }
         }
 
-        // Edge-to-edge 활성화
         enableEdgeToEdge()
 
         setContent {
             AirmonomatekrTheme {
-                // Compose에서 상태를 remember로 관리
-                var showPermissionDialog by remember { mutableStateOf(false) }
-                var permissionText by remember { mutableStateOf("") }
-                var isPermanentlyDeclined by remember { mutableStateOf(false) }
-
                 val navController = rememberNavController()
                 val navBackStackEntry by navController.currentBackStackEntryAsState()
                 val currentRoute = navBackStackEntry?.destination?.route
@@ -95,59 +94,75 @@ class MainActivity : ComponentActivity() {
                         startDestination = Screen.Home.route,
                         modifier = Modifier.padding(innerPadding)
                     ) {
-                        composable(Screen.Home.route) { HomeScreen() }
+                        composable(Screen.Home.route) {
+                            HomeScreen(
+                                onBluetoothPermissionNeeded = { checkAndRequestBluetoothPermissions() }
+                            )
+                        }
                         composable(Screen.Logs.route) { LogsScreen() }
                         composable(Screen.Settings.route) { SettingsScreen() }
                     }
                 }
-
-                // 권한 요청 다이얼로그 표시
-                if (showPermissionDialog) {
-                    PermissionDialog(
-                        permissionTextProvider = permissionText,
-                        isPermanentlyDeclined = isPermanentlyDeclined,
-                        onDismiss = { showPermissionDialog = false },
-                        onOkClick = {
-                            showPermissionDialog = false
-                            checkAndRequestPermissions()
-                        },
-                        onGoToAppSettingsClick = { openAppSettings() }
-                    )
-                }
             }
         }
-
-        // 권한 요청 시작
-        checkAndRequestPermissions()
     }
 
-    private fun handlePermissionResult(allGranted: Boolean) {
-        if (!allGranted) {
-            val isPermanentlyDeclined = !shouldShowRequestPermissionRationale(
-                PermissionHelper.requiredPermissions.first()
+    private fun checkAndRequestBluetoothPermissions() {
+        // Android 12 (API 31) 이상
+        val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT
             )
-            if (isPermanentlyDeclined) {
-                // 사용자가 "다시 묻지 않음"을 선택한 경우 설정으로 이동
-                openAppSettings()
-            } else {
-                // 권한을 다시 요청
-                permissionLauncher.launch(PermissionHelper.requiredPermissions)
-            }
         }
-    }
+        // Android 10 (API 29) ~ Android 11 (API 30)
+        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        }
+        // Android 9 (API 28) 이하
+        else {
+            arrayOf(
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            )
+        }
 
-    private fun checkAndRequestPermissions() {
-        if (!PermissionHelper.hasRequiredPermissions(this)) {
-            permissionLauncher.launch(PermissionHelper.requiredPermissions)
+        val missingPermissions = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missingPermissions.isNotEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("위치 권한 필요")
+                .setMessage(
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        "블루투스 기기를 검색하고 연결하기 위해 블루투스 권한이 필요합니다."
+                    } else {
+                        "블루투스 기기를 검색하고 연결하기 위해 위치 권한이 필요합니다.\n" +
+                        "위치 정보는 블루투스 검색 용도로만 사용됩니다."
+                    }
+                )
+                .setPositiveButton("설정으로 이동") { _, _ ->
+                    openAppSettings()
+                }
+                .setNegativeButton("권한 요청") { _, _ ->
+                    permissionLauncher.launch(missingPermissions.toTypedArray())
+                }
+                .show()
         }
     }
 
     private fun openAppSettings() {
-        Intent(
-            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
-            Uri.fromParts("package", packageName, null)
-        ).also { intent ->
+        try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.fromParts("package", packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
             startActivity(intent)
+        } catch (e: Exception) {
+            startActivity(Intent(Settings.ACTION_SETTINGS))
         }
     }
 }
