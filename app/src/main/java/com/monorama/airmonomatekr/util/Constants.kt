@@ -6,7 +6,7 @@ object Constants {
     const val API_KEY = BuildConfig.API_KEY
 
     object Api {
-        const val BASE_URL = "http://air.monomate.kr/"
-        const val WS_URL = "ws://air.monomate.kr/ws"
+        const val BASE_URL = "https://air.monomate.kr/"
+        const val WS_URL = "https://air.monomate.kr/ws"
     }
 } 
