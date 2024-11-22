@@ -20,6 +20,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneOffset
 import javax.inject.Inject
+import com.google.gson.Gson
 
 @HiltViewModel
 class LogsViewModel @Inject constructor(
@@ -32,11 +33,24 @@ class LogsViewModel @Inject constructor(
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
+    private val _currentPage = MutableStateFlow(0)
+    val currentPage: StateFlow<Int> = _currentPage.asStateFlow()
+
+    private val _totalPages = MutableStateFlow(0)
+    val totalPages: StateFlow<Int> = _totalPages.asStateFlow()
+
+    fun setPage(page: Int) {
+        viewModelScope.launch {
+            _currentPage.value = page
+        }
+    }
+
     fun fetchLogs(date: LocalDate) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 println("LogsViewModel: Fetching logs for date: $date")
+
                 val request = SearchRequest(
                     location = Location(),
                     dateRange = DateRange(
@@ -45,15 +59,15 @@ class LogsViewModel @Inject constructor(
                     ),
                     apiKey = Constants.API_KEY
                 )
-                println("LogsViewModel: Sending request: $request")
+
+                val requestJson = Gson().toJson(request)
+                println("LogsViewModel: Request body: $requestJson")
 
                 val response = apiService.searchDevices(request)
                 println("LogsViewModel: Received response: $response")
-                
-                // content[1]에서 실제 데이터 리스트 추출
+
                 val dataList = (response.content[1] as? List<*>)?.filterIsInstance<Map<*, *>>()
-                
-                // Map을 SensorLogData로 변환
+
                 _logs.value = dataList?.mapNotNull { map ->
                     try {
                         SensorLogData(
@@ -92,6 +106,9 @@ class LogsViewModel @Inject constructor(
                 } ?: emptyList()
                 
                 println("LogsViewModel: Converted to ${_logs.value.size} SensorLogData items")
+                
+                _totalPages.value = (_logs.value.size + 9) / 10
+                _currentPage.value = 0
             } catch (e: Exception) {
                 println("LogsViewModel: Error fetching logs - ${e.message}")
                 e.printStackTrace()
