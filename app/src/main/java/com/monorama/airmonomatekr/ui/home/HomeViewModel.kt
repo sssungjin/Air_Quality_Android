@@ -33,6 +33,9 @@ class HomeViewModel @Inject constructor(
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
 
+    private val _isCollectingData = MutableStateFlow(false)
+    val isCollectingData: StateFlow<Boolean> = _isCollectingData.asStateFlow()
+
     // BleManager의 sensorData를 직접 사용
     val sensorData = bleManager.sensorData
 
@@ -55,6 +58,7 @@ class HomeViewModel @Inject constructor(
 
     fun stopScan() {
         viewModelScope.launch {
+            println("HomeViewModel: Stopping scan")
             _isScanning.value = false
             bleManager.stopScan()
         }
@@ -63,35 +67,35 @@ class HomeViewModel @Inject constructor(
     fun connectToDevice(device: BluetoothDevice) {
         viewModelScope.launch {
             try {
+                if (ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    // TODO: Consider calling
+                    //    ActivityCompat#requestPermissions
+                    // here to request the missing permissions, and then overriding
+                    //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                    //                                          int[] grantResults)
+                    // to handle the case where the user grants the permission. See the documentation
+                    // for ActivityCompat#requestPermissions for more details.
+                }
                 println("HomeViewModel: Attempting to connect to device: ${device.name}")
-                // 스캔 중지
-                stopScan()
+                stopScan() // 스캔 중지
                 
                 if (bleManager.connect(device.address)) {
                     _isConnected.value = true
+                    _isCollectingData.value = true
                     println("HomeViewModel: Connection successful")
-                    // 연결 성공 시 실시간 데이터 모니터링 시작
-                    startDataMonitoring()
                 } else {
-                    println("HomeViewModel: Connection failed")
                     _isConnected.value = false
+                    _isCollectingData.value = false
+                    println("HomeViewModel: Connection failed")
                 }
             } catch (e: Exception) {
                 println("HomeViewModel: Connection failed with error: ${e.message}")
                 _isConnected.value = false
-            }
-        }
-    }
-
-    private fun startDataMonitoring() {
-        viewModelScope.launch {
-            // sensorData 상태 변경 감지
-            bleManager.sensorData.collect { data ->
-                // 데이터가 수신되면 UI 업데이트
-                data?.let {
-                    println("HomeViewModel: Received sensor data: $it")
-                    // 필요한 경우 데이터 처리 및 UI 업데이트
-                }
+                _isCollectingData.value = false
             }
         }
     }
@@ -100,7 +104,7 @@ class HomeViewModel @Inject constructor(
         viewModelScope.launch {
             bleManager.disconnect()
             _isConnected.value = false
-            // BleManager가 자체적으로 sensorData를 null로 초기화할 것입니다
+            _isCollectingData.value = false
         }
     }
 
@@ -129,7 +133,6 @@ class HomeViewModel @Inject constructor(
 
     override fun onCleared() {
         super.onCleared()
-        stopScan()
         bleManager.disconnect()
     }
 }

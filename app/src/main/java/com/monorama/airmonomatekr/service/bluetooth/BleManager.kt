@@ -13,9 +13,15 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import com.monorama.airmonomatekr.data.repository.SensorData
 import com.monorama.airmonomatekr.util.PermissionHelper
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.*
 
 class BleManager(private val context: Context) {
@@ -93,35 +99,72 @@ class BleManager(private val context: Context) {
     private val discoveredDevices = mutableSetOf<BluetoothDevice>()
     private var currentScanCallback: ((List<BluetoothDevice>) -> Unit)? = null
 
+    private var dataCollectionJob: Job? = null
+
+    private fun startDataCollection(gatt: BluetoothGatt) {
+        println("BleManager: Starting data collection")
+        dataCollectionJob?.cancel()
+
+        dataCollectionJob = CoroutineScope(Dispatchers.IO).launch {
+            while (isActive) {
+                try {
+                    // 센서 데이터 특성 읽기
+                    val service = gatt.getService(UUID.fromString("0000ffb0-0000-1000-8000-00805f9b34fb"))
+                    val characteristic = service?.getCharacteristic(UUID.fromString("0000ffb3-0000-1000-8000-00805f9b34fb"))
+                    
+                    if (characteristic == null) {
+                        println("BleManager: Characteristic not found")
+                        break
+                    }
+
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        if (ActivityCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.BLUETOOTH_CONNECT
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            println("BleManager: Reading characteristic...")
+                            gatt.readCharacteristic(characteristic)
+                        }
+                    } else {
+                        // SDK 28용 레거시 방식
+                        println("BleManager: Reading characteristic (legacy)...")
+                        gatt.readCharacteristic(characteristic)
+                    }
+                    
+                    delay(1000) // 1초 대기
+                } catch (e: Exception) {
+                    println("BleManager: Error reading data: ${e.message}")
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+
     private val gattCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             println("BleManager: Connection state changed - status: $status, newState: $newState")
 
-            when (status) {
-                BluetoothGatt.GATT_SUCCESS -> {
-                    when (newState) {
-                        BluetoothProfile.STATE_CONNECTED -> {
-                            println("BleManager: Successfully connected to GATT server")
-                            if (ActivityCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.BLUETOOTH_CONNECT
-                                ) == PackageManager.PERMISSION_GRANTED
-                            ) {
-                                println("BleManager: Discovering services...")
-                                // 서비스 발견 지연 추가
-                                Thread.sleep(600)
-                                gatt.discoverServices()
-                            }
-                        }
-                        BluetoothProfile.STATE_DISCONNECTED -> {
-                            println("BleManager: Disconnected from GATT server")
-                            bluetoothGatt = null
-                            _sensorData.value = null
+            when (newState) {
+                BluetoothProfile.STATE_CONNECTED -> {
+                    println("BleManager: Successfully connected to GATT server")
+                    // Thread.sleep 대신 코루틴의 delay 사용
+                    CoroutineScope(Dispatchers.IO).launch {
+                        delay(1000) // 1초 대기
+                        if (ActivityCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.BLUETOOTH_CONNECT
+                            ) == PackageManager.PERMISSION_GRANTED
+                        ) {
+                            println("BleManager: Starting service discovery")
+                            gatt.discoverServices()
                         }
                     }
                 }
-                else -> {
-                    println("BleManager: Connection state change failed with status: $status")
+                BluetoothProfile.STATE_DISCONNECTED -> {
+                    println("BleManager: Disconnected from GATT server")
+                    dataCollectionJob?.cancel()
                     bluetoothGatt?.close()
                     bluetoothGatt = null
                     _sensorData.value = null
@@ -130,16 +173,63 @@ class BleManager(private val context: Context) {
         }
 
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            println("BleManager: onServicesDiscovered status: $status")
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 println("BleManager: Services discovered successfully")
-                println("BleManager: Found ${gatt.services.size} services")
+                
+                // 서비스 목록 출력
                 gatt.services.forEach { service ->
-                    println("BleManager: Service: ${service.uuid}")
+                    println("BleManager: Found service: ${service.uuid}")
+                    service.characteristics.forEach { characteristic ->
+                        println("BleManager: - Characteristic: ${characteristic.uuid}")
+                    }
                 }
-                enableSensors(gatt)
-                setupNotifications(gatt)
+
+                // 순차적으로 센서 설정
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        println("BleManager: Setting up device...")
+                        enableSensors(gatt)
+                        delay(1000)
+                        setupNotifications(gatt)
+                        delay(1000)
+                        startDataCollection(gatt)
+                        println("BleManager: Device setup complete")
+                    } catch (e: Exception) {
+                        println("BleManager: Error during device setup: ${e.message}")
+                        e.printStackTrace()
+                    }
+                }
             } else {
                 println("BleManager: Service discovery failed with status: $status")
+            }
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            println("BleManager: onCharacteristicRead status: $status")
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                println("BleManager: [Legacy] Read characteristic success")
+                characteristic.value?.let { value ->
+                    println("BleManager: [Legacy] Received data length: ${value.size}")
+                    parseSensorData(value)
+                }
+            } else {
+                println("BleManager: [Legacy] Read characteristic failed with status: $status")
+            }
+        }
+
+        override fun onCharacteristicChanged(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic
+        ) {
+            println("BleManager: Characteristic changed")
+            characteristic.value?.let { value ->
+                println("BleManager: Received data length: ${value.size}")
+                parseSensorData(value)
             }
         }
     }
@@ -241,51 +331,72 @@ class BleManager(private val context: Context) {
     fun connect(deviceAddress: String): Boolean {
         println("BleManager: Attempting to connect to device: $deviceAddress")
 
-        if (!PermissionHelper.hasRequiredPermissions(context)) {
-            println("BleManager: Required permissions not granted")
-            throw SecurityException("Required permissions are not granted")
+        // 이전 연결 해제
+        if (ActivityCompat.checkSelfPermission(
+                context,
+                Manifest.permission.BLUETOOTH_CONNECT
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
         }
+        bluetoothGatt?.close()
+        bluetoothGatt = null
 
-        // 기존 연결이 있다면 해제
-        bluetoothGatt?.let {
-            println("BleManager: Disconnecting from previous connection")
-            disconnect()
-        }
-
+        // 새로운 연결 시도
         bluetoothAdapter?.let { adapter ->
             try {
                 val device = adapter.getRemoteDevice(deviceAddress)
-                if (ActivityCompat.checkSelfPermission(
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                    ActivityCompat.checkSelfPermission(
                         context,
                         Manifest.permission.BLUETOOTH_CONNECT
                     ) == PackageManager.PERMISSION_GRANTED
                 ) {
-                    println("BleManager: Connecting to device: ${device.address}")
-                    // autoConnect를 true로 설정하여 연결 안정성 향상
-                    bluetoothGatt = device.connectGatt(context, true, gattCallback, BluetoothDevice.TRANSPORT_LE)
+                    println("BleManager: Creating GATT connection")
+                    bluetoothGatt = device.connectGatt(
+                        context,
+                        false,  // autoConnect false for immediate connection attempt
+                        gattCallback,
+                        BluetoothDevice.TRANSPORT_LE
+                    )
                     return true
                 } else {
-                    println("BleManager: BLUETOOTH_CONNECT permission not granted")
+                    println("BleManager: Missing BLUETOOTH_CONNECT permission")
                 }
-            } catch (e: IllegalArgumentException) {
-                println("BleManager: Failed to connect: ${e.message}")
-                return false
+            } catch (e: Exception) {
+                println("BleManager: Connection error: ${e.message}")
             }
         }
-        println("BleManager: BluetoothAdapter not available")
+
         return false
     }
 
 
     private fun setupNotifications(gatt: BluetoothGatt) {
-        if (!PermissionHelper.hasBluetoothPermissions(context)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            !PermissionHelper.hasBluetoothPermissions(context)
+        ) {
+            println("BleManager: Cannot setup notifications - missing permissions")
             return
         }
 
         try {
-            gatt.getService(UUID.fromString("0000ffb0-0000-1000-8000-00805f9b34fb"))?.let { service ->
-                service.getCharacteristic(UUID.fromString("0000ffb3-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                    println("BleManager: Setting up notifications for sensor data")
+            val sensorService = gatt.getService(UUID.fromString("0000ffb0-0000-1000-8000-00805f9b34fb"))
+            val sensorCharacteristic = sensorService?.getCharacteristic(
+                UUID.fromString("0000ffb3-0000-1000-8000-00805f9b34fb")
+            )
+
+            if (sensorCharacteristic != null) {
+                println("BleManager: Found sensor characteristic")
+
+                // 노티피케이션 활성화
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     if (ActivityCompat.checkSelfPermission(
                             context,
                             Manifest.permission.BLUETOOTH_CONNECT
@@ -300,86 +411,136 @@ class BleManager(private val context: Context) {
                         // for ActivityCompat#requestPermissions for more details.
                         return
                     }
-                    gatt.setCharacteristicNotification(characteristic, true)
+                    gatt.setCharacteristicNotification(sensorCharacteristic, true)
+                } else {
+                    // Legacy 방식
+                    sensorCharacteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    gatt.setCharacteristicNotification(sensorCharacteristic, true)
                 }
+
+                // 디스크립터 설정
+                val descriptor = sensorCharacteristic.getDescriptor(
+                    UUID.fromString("00002902-0000-1000-8000-00805f9b34fb")
+                )
+                if (descriptor != null) {
+                    descriptor.value = BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE
+                    gatt.writeDescriptor(descriptor)
+                    println("BleManager: Enabled notifications for sensor characteristic")
+                }
+            } else {
+                println("BleManager: Could not find sensor characteristic")
             }
         } catch (e: Exception) {
             println("BleManager: Error setting up notifications: ${e.message}")
         }
     }
 
-    private fun enableSensors(gatt: BluetoothGatt) {
+    private suspend fun enableSensors(gatt: BluetoothGatt) {
+        println("BleManager: Starting to enable sensors")
+
         if (!PermissionHelper.hasBluetoothPermissions(context)) {
+            println("BleManager: Missing permissions for enabling sensors")
             return
         }
 
-        if (ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.BLUETOOTH_CONNECT
-            ) == PackageManager.PERMISSION_GRANTED
-        ) {
-            try {
-                // Enable dust sensor
-                gatt.getService(UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb"))?.let { service ->
-                    service.getCharacteristic(UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                        println("BleManager: Enabling dust sensor")
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            gatt.writeCharacteristic(
-                                characteristic,
-                                byteArrayOf(0x01),
-                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            )
-                        } else {
-                            // API 레벨 28용 레거시 방식
-                            characteristic.value = byteArrayOf(0x01)
-                            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            gatt.writeCharacteristic(characteristic)
-                        }
-                    }
-                }
+        try {
+            // Dust sensor (PM2.5)
+            println("BleManager: Attempting to enable dust sensor")
+            val dustService = gatt.getService(UUID.fromString("0000ffe0-0000-1000-8000-00805f9b34fb"))
+            val dustChar = dustService?.getCharacteristic(UUID.fromString("0000ffe1-0000-1000-8000-00805f9b34fb"))
 
-                // Enable gas sensor
-                gatt.getService(UUID.fromString("0000ffd0-0000-1000-8000-00805f9b34fb"))?.let { service ->
-                    service.getCharacteristic(UUID.fromString("0000ffd1-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                        println("BleManager: Enabling gas sensor")
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            gatt.writeCharacteristic(
-                                characteristic,
-                                byteArrayOf(0x01),
-                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            )
-                        } else {
-                            characteristic.value = byteArrayOf(0x01)
-                            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            gatt.writeCharacteristic(characteristic)
-                        }
-                    }
-                }
+            if (dustChar != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val success = if (ActivityCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.BLUETOOTH_CONNECT
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        // TODO: Consider calling
+                        //    ActivityCompat#requestPermissions
+                        // here to request the missing permissions, and then overriding
+                        //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+                        //                                          int[] grantResults)
+                        // to handle the case where the user grants the permission. See the documentation
+                        // for ActivityCompat#requestPermissions for more details.
+                        return
+                    } else {
 
-                // Enable temperature/humidity sensor
-                gatt.getService(UUID.fromString("0000ffc0-0000-1000-8000-00805f9b34fb"))?.let { service ->
-                    service.getCharacteristic(UUID.fromString("0000ffc1-0000-1000-8000-00805f9b34fb"))?.let { characteristic ->
-                        println("BleManager: Enabling temperature/humidity sensor")
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            gatt.writeCharacteristic(
-                                characteristic,
-                                byteArrayOf(0x02),
-                                BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            )
-                        } else {
-                            characteristic.value = byteArrayOf(0x02)
-                            characteristic.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
-                            gatt.writeCharacteristic(characteristic)
-                        }
                     }
+                    gatt.writeCharacteristic(
+                        dustChar,
+                        byteArrayOf(0x01),
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    )
+                    println("BleManager: Dust sensor enable request sent: $success")
+                } else {
+                    dustChar.value = byteArrayOf(0x01)
+                    dustChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    val success = gatt.writeCharacteristic(dustChar)
+                    println("BleManager: Dust sensor enable request sent (legacy): $success")
                 }
-            } catch (e: Exception) {
-                println("BleManager: Error enabling sensors: ${e.message}")
+                delay(500)  // 각 작업 사이의 지연 시간
+            } else {
+                println("BleManager: Dust sensor characteristic not found")
             }
+
+            // Gas sensor (CO2)
+            println("BleManager: Attempting to enable gas sensor")
+            val gasService = gatt.getService(UUID.fromString("0000ffd0-0000-1000-8000-00805f9b34fb"))
+            val gasChar = gasService?.getCharacteristic(UUID.fromString("0000ffd1-0000-1000-8000-00805f9b34fb"))
+
+            if (gasChar != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val success = gatt.writeCharacteristic(
+                        gasChar,
+                        byteArrayOf(0x01),
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    )
+                    println("BleManager: Gas sensor enable request sent: $success")
+                } else {
+                    gasChar.value = byteArrayOf(0x01)
+                    gasChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    val success = gatt.writeCharacteristic(gasChar)
+                    println("BleManager: Gas sensor enable request sent (legacy): $success")
+                }
+                delay(500)
+            } else {
+                println("BleManager: Gas sensor characteristic not found")
+            }
+
+            // Temperature/Humidity sensor
+            println("BleManager: Attempting to enable temperature/humidity sensor")
+            val thService = gatt.getService(UUID.fromString("0000ffc0-0000-1000-8000-00805f9b34fb"))
+            val thChar = thService?.getCharacteristic(UUID.fromString("0000ffc1-0000-1000-8000-00805f9b34fb"))
+
+            if (thChar != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val success = gatt.writeCharacteristic(
+                        thChar,
+                        byteArrayOf(0x02),
+                        BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    )
+                    println("BleManager: Temperature sensor enable request sent: $success")
+                } else {
+                    thChar.value = byteArrayOf(0x02)
+                    thChar.writeType = BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT
+                    val success = gatt.writeCharacteristic(thChar)
+                    println("BleManager: Temperature sensor enable request sent (legacy): $success")
+                }
+            } else {
+                println("BleManager: Temperature sensor characteristic not found")
+            }
+
+        } catch (e: Exception) {
+            println("BleManager: Error enabling sensors: ${e.message}")
+            e.printStackTrace()
         }
     }
 
     fun disconnect() {
+        println("BleManager: Disconnecting...")
+        dataCollectionJob?.cancel() // 데이터 수집 중지
+        
         if (!PermissionHelper.hasBluetoothPermissions(context)) {
             return
         }
@@ -390,10 +551,10 @@ class BleManager(private val context: Context) {
                     Manifest.permission.BLUETOOTH_CONNECT
                 ) == PackageManager.PERMISSION_GRANTED
             ) {
-                println("BleManager: Disconnecting from device")
                 gatt.disconnect()
                 gatt.close()
                 bluetoothGatt = null
+                _sensorData.value = null
             }
         }
     }

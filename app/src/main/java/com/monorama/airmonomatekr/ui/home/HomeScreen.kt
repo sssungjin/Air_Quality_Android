@@ -109,18 +109,6 @@ fun HomeScreen(
                         discoveredDevices.forEach { device ->
                             Button(
                                 onClick = {
-                                    viewModel.connectToDevice(device)
-                                    showDeviceList = false
-                                    viewModel.stopScan()
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                            ) {
-                                Column(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalAlignment = Alignment.Start
-                                ) {
                                     if (ActivityCompat.checkSelfPermission(
                                             context,
                                             Manifest.permission.BLUETOOTH_CONNECT
@@ -133,8 +121,20 @@ fun HomeScreen(
                                         //                                          int[] grantResults)
                                         // to handle the case where the user grants the permission. See the documentation
                                         // for ActivityCompat#requestPermissions for more details.
-
                                     }
+                                    println("HomeScreen: Device selected: ${device.name}")
+                                    viewModel.connectToDevice(device)
+                                    showDeviceList = false  // 다이얼로그 닫기
+                                    viewModel.stopScan()    // 스캔 중지
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.Start
+                                ) {
                                     Text(
                                         text = device.name ?: "Unknown Device",
                                         style = MaterialTheme.typography.titleMedium
