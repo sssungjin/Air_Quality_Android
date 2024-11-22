@@ -1,6 +1,6 @@
-package com.monorama.airmonomatekr.data.repository;
+package com.monorama.airmonomatekr.data.model;
 
-data class SensorData(
+data class SensorLogData(
         val pm25: SensorValue,
         val pm10: SensorValue,
         val temperature: SensorValue,

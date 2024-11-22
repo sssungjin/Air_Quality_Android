@@ -9,7 +9,6 @@ import android.location.LocationManager
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.monorama.airmonomatekr.data.repository.SensorRepository
 import com.monorama.airmonomatekr.service.bluetooth.BleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -37,7 +36,7 @@ class HomeViewModel @Inject constructor(
     val isCollectingData: StateFlow<Boolean> = _isCollectingData.asStateFlow()
 
     // BleManager의 sensorData를 직접 사용
-    val sensorData = bleManager.sensorData
+    val sensorData = bleManager.sensorLogData
 
     fun startScan() {
         viewModelScope.launch {

@@ -9,9 +9,10 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
-import com.monorama.airmonomatekr.data.repository.SensorData
+import com.monorama.airmonomatekr.data.model.SensorLogData
+import com.monorama.airmonomatekr.network.websocket.WebSocketManager
+import com.monorama.airmonomatekr.util.Constants
 import com.monorama.airmonomatekr.util.PermissionHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,15 +24,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
+import javax.inject.Inject
 
-class BleManager(private val context: Context) {
+class BleManager @Inject constructor(
+    private val context: Context,
+    private val webSocketManager: WebSocketManager
+) {
+    init {
+        // 웹소켓 연결 초기화
+        webSocketManager.connect(Constants.Api.WS_URL) { message ->
+            println("BleManager: Received WebSocket message: $message")
+        }
+    }
+
     private var bluetoothGatt: BluetoothGatt? = null
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
     }
 
-    private val _sensorData = MutableStateFlow<SensorData?>(null)
-    val sensorData: StateFlow<SensorData?> = _sensorData.asStateFlow()
+    private val _sensorLogData = MutableStateFlow<SensorLogData?>(null)
+    val sensorLogData: StateFlow<SensorLogData?> = _sensorLogData.asStateFlow()
 
     private val bluetoothLeScanner by lazy {
         bluetoothAdapter?.bluetoothLeScanner
@@ -193,7 +205,7 @@ class BleManager(private val context: Context) {
                     println("BleManager: Disconnected from GATT server")
                     dataCollectionJob?.cancel()
                     closeGatt()
-                    _sensorData.value = null
+                    _sensorLogData.value = null
                 }
             }
         }
@@ -283,34 +295,38 @@ class BleManager(private val context: Context) {
         if (value.size < 18) return
 
         try {
-            val data = SensorData(
-                pm25 = SensorData.SensorValue(
+            val data = SensorLogData(
+                pm25 = SensorLogData.SensorValue(
                     value = ((value[0].toInt() and 0xFF) shl 8 or (value[1].toInt() and 0xFF)).toFloat(),
                     level = value[2].toInt() and 0xFF
                 ),
-                pm10 = SensorData.SensorValue(
+                pm10 = SensorLogData.SensorValue(
                     value = ((value[3].toInt() and 0xFF) shl 8 or (value[4].toInt() and 0xFF)).toFloat(),
                     level = value[5].toInt() and 0xFF
                 ),
-                temperature = SensorData.SensorValue(
+                temperature = SensorLogData.SensorValue(
                     value = ((value[6].toInt() and 0xFF) shl 8 or (value[7].toInt() and 0xFF)) / 10.0f,
                     level = value[8].toInt() and 0xFF
                 ),
-                humidity = SensorData.SensorValue(
+                humidity = SensorLogData.SensorValue(
                     value = ((value[9].toInt() and 0xFF) shl 8 or (value[10].toInt() and 0xFF)) / 10.0f,
                     level = value[11].toInt() and 0xFF
                 ),
-                co2 = SensorData.SensorValue(
+                co2 = SensorLogData.SensorValue(
                     value = ((value[12].toInt() and 0xFF) shl 8 or (value[13].toInt() and 0xFF)).toFloat(),
                     level = value[14].toInt() and 0xFF
                 ),
-                voc = SensorData.SensorValue(
+                voc = SensorLogData.SensorValue(
                     value = ((value[15].toInt() and 0xFF) shl 8 or (value[16].toInt() and 0xFF)).toFloat(),
                     level = value[17].toInt() and 0xFF
                 )
             )
-            _sensorData.value = data
-            println("BleManager: Parsed sensor data: $data")
+            _sensorLogData.value = data
+
+            // 웹소켓으로 데이터 전송
+            webSocketManager.sendSensorData(data)
+
+            println("BleManager: Parsed and sent sensor data: $data")
         } catch (e: Exception) {
             println("Error parsing sensor data: ${e.message}")
         }
@@ -584,8 +600,8 @@ class BleManager(private val context: Context) {
 
     fun disconnect() {
         println("BleManager: Disconnecting...")
-        dataCollectionJob?.cancel() // 데이터 수집 중지
-        
+        dataCollectionJob?.cancel()
+
         if (!PermissionHelper.hasBluetoothPermissions(context)) {
             return
         }
@@ -599,7 +615,10 @@ class BleManager(private val context: Context) {
                 gatt.disconnect()
                 gatt.close()
                 bluetoothGatt = null
-                _sensorData.value = null
+                _sensorLogData.value = null
+
+                // 웹소켓 연결 해제
+                webSocketManager.disconnect()
             }
         }
     }

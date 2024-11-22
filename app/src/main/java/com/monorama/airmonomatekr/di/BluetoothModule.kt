@@ -1,6 +1,7 @@
 package com.monorama.airmonomatekr.di
 
 import android.content.Context
+import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.service.bluetooth.BleManager
 import dagger.Module
 import dagger.Provides
@@ -16,8 +17,9 @@ object BluetoothModule {
     @Provides
     @Singleton
     fun provideBleManager(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        webSocketManager: WebSocketManager
     ): BleManager {
-        return BleManager(context)
+        return BleManager(context, webSocketManager)
     }
 }

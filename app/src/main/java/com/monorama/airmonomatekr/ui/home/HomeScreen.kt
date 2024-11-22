@@ -3,6 +3,8 @@ package com.monorama.airmonomatekr.ui.home
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
@@ -15,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.monorama.airmonomatekr.ui.home.components.SensorDataCard
+import com.monorama.airmonomatekr.ui.home.components.SensorDataGrid
 import com.monorama.airmonomatekr.util.PermissionHelper
 
 @Composable
@@ -196,50 +199,15 @@ fun HomeScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         if (isConnected) {
-            // 연결된 상태일 때 실시간 데이터 표시
             Text(
                 text = "Real-time Air Quality",
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
 
-            // 실제 센서 데이터 표시
             sensorData?.let { data ->
-                SensorDataCard(
-                    title = "Fine Dust (PM2.5)",
-                    value = data.pm25.value.toString(),
-                    unit = "μg/m³",
-                    level = data.pm25.level
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                SensorDataCard(
-                    title = "Carbon Dioxide (CO2)",
-                    value = data.co2.value.toString(),
-                    unit = "ppm",
-                    level = data.co2.level
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                SensorDataCard(
-                    title = "Temperature",
-                    value = data.temperature.value.toString(),
-                    unit = "°C",
-                    level = data.temperature.level
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                SensorDataCard(
-                    title = "Humidity",
-                    value = data.humidity.value.toString(),
-                    unit = "%",
-                    level = data.humidity.level
-                )
+                SensorDataGrid(data)
             } ?: run {
-                // 연결은 되었지만 데이터가 아직 없는 경우
                 CircularProgressIndicator(
                     modifier = Modifier.padding(16.dp)
                 )
