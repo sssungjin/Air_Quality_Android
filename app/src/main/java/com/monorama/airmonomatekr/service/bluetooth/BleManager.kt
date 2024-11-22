@@ -149,26 +149,71 @@ class BleManager(private val context: Context) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     println("BleManager: Successfully connected to GATT server")
-                    // Thread.sleep 대신 코루틴의 delay 사용
+
                     CoroutineScope(Dispatchers.IO).launch {
                         delay(1000) // 1초 대기
-                        if (ActivityCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.BLUETOOTH_CONNECT
-                            ) == PackageManager.PERMISSION_GRANTED
-                        ) {
-                            println("BleManager: Starting service discovery")
-                            gatt.discoverServices()
+
+                        // Android 12 (API 31) 이상
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.BLUETOOTH_CONNECT
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                println("BleManager: Starting service discovery")
+                                if (!gatt.discoverServices()) {
+                                    println("BleManager: Failed to start service discovery")
+                                    disconnect()
+                                }
+                            } else {
+                                println("BleManager: Missing BLUETOOTH_CONNECT permission")
+                                disconnect()
+                            }
+                        }
+                        // Android 11 이하 (API 30 이하)
+                        else {
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                println("BleManager: Starting service discovery (legacy)")
+                                if (!gatt.discoverServices()) {
+                                    println("BleManager: Failed to start service discovery")
+                                    disconnect()
+                                }
+                            } else {
+                                println("BleManager: Missing location permission")
+                                disconnect()
+                            }
                         }
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     println("BleManager: Disconnected from GATT server")
                     dataCollectionJob?.cancel()
-                    bluetoothGatt?.close()
-                    bluetoothGatt = null
+                    closeGatt()
                     _sensorData.value = null
                 }
+            }
+        }
+
+        private fun closeGatt() {
+            // Android 12 (API 31) 이상
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    bluetoothGatt?.close()
+                    bluetoothGatt = null
+                }
+            }
+            // Android 11 이하 (API 30 이하)
+            else {
+                bluetoothGatt?.close()
+                bluetoothGatt = null
             }
         }
 
@@ -274,20 +319,22 @@ class BleManager(private val context: Context) {
     fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
         println("BleManager: Starting scan...")
 
-        // Android 버전에 따른 권한 체크
+        // Android 12 (API 31) 이상
         val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
+            ) == PackageManager.PERMISSION_GRANTED &&
+                    ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+        }
+        // Android 11 이하 (API 30 이하)
+        else {
             ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED ||
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         }
 
@@ -304,8 +351,6 @@ class BleManager(private val context: Context) {
 
         discoveredDevices.clear()
         currentScanCallback = onDevicesFound
-
-        println("BleManager: Starting BLE scan with settings: ${scanSettings.scanMode}")
 
         try {
             bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
