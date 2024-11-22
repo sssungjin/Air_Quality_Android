@@ -1,7 +1,9 @@
 package com.monorama.airmonomatekr
 
 import android.Manifest
+import android.app.Activity
 import android.app.AlertDialog
+import android.bluetooth.BluetoothAdapter
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -41,19 +43,31 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-
     private lateinit var permissionLauncher: ActivityResultLauncher<Array<String>>
+    private lateinit var bluetoothEnableLauncher: ActivityResultLauncher<Intent>
     private var showBluetoothDialog by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // 권한 요청 launcher 초기화
         permissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
         ) { permissions ->
             val allGranted = permissions.entries.all { it.value }
             if (!allGranted) {
                 showBluetoothDialog = true
+            }
+        }
+
+        // 블루투스 활성화 요청 launcher 초기화
+        bluetoothEnableLauncher = registerForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) { result ->
+            if (result.resultCode == Activity.RESULT_OK) {
+                println("MainActivity: Bluetooth has been enabled")
+            } else {
+                println("MainActivity: Bluetooth enable request was denied")
             }
         }
 
@@ -96,7 +110,8 @@ class MainActivity : ComponentActivity() {
                     ) {
                         composable(Screen.Home.route) {
                             HomeScreen(
-                                onBluetoothPermissionNeeded = { checkAndRequestBluetoothPermissions() }
+                                onBluetoothPermissionNeeded = { checkAndRequestBluetoothPermissions() },
+                                onEnableBluetoothRequest = { requestEnableBluetooth() }
                             )
                         }
                         composable(Screen.Logs.route) { LogsScreen() }
@@ -107,23 +122,27 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun requestEnableBluetooth() {
+        try {
+            val enableBtIntent = Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE)
+            bluetoothEnableLauncher.launch(enableBtIntent)
+        } catch (e: Exception) {
+            println("MainActivity: Failed to request Bluetooth enable: ${e.message}")
+        }
+    }
+
     private fun checkAndRequestBluetoothPermissions() {
-        // Android 12 (API 31) 이상
         val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             arrayOf(
                 Manifest.permission.BLUETOOTH_SCAN,
                 Manifest.permission.BLUETOOTH_CONNECT
             )
-        }
-        // Android 10 (API 29) ~ Android 11 (API 30)
-        else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             arrayOf(
                 Manifest.permission.ACCESS_FINE_LOCATION,
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
-        }
-        // Android 9 (API 28) 이하
-        else {
+        } else {
             arrayOf(
                 Manifest.permission.ACCESS_COARSE_LOCATION
             )
@@ -141,7 +160,7 @@ class MainActivity : ComponentActivity() {
                         "블루투스 기기를 검색하고 연결하기 위해 블루투스 권한이 필요합니다."
                     } else {
                         "블루투스 기기를 검색하고 연결하기 위해 위치 권한이 필요합니다.\n" +
-                        "위치 정보는 블루투스 검색 용도로만 사용됩니다."
+                                "위치 정보는 블루투스 검색 용도로만 사용됩니다."
                     }
                 )
                 .setPositiveButton("설정으로 이동") { _, _ ->
