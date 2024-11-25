@@ -9,6 +9,7 @@ import com.monorama.airmonomatekr.MainActivity
 import com.monorama.airmonomatekr.R
 import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.util.PermissionHelper
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,7 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class BluetoothService : Service() {
@@ -24,10 +24,11 @@ class BluetoothService : Service() {
     private lateinit var bleManager: BleManager
 
     @Inject
-    lateinit  var webSocketManager: WebSocketManager
+    lateinit var webSocketManager: WebSocketManager
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected = _isConnected.asStateFlow()
+
 
     override fun onCreate() {
         super.onCreate()

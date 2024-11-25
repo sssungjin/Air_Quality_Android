@@ -9,7 +9,6 @@ import android.location.LocationManager
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.monorama.airmonomatekr.data.repository.SensorRepository
 import com.monorama.airmonomatekr.service.bluetooth.BleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext

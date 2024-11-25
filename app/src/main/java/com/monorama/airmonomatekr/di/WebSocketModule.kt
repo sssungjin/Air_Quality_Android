@@ -22,9 +22,9 @@ object WebSocketModule {
         locationManager: LocationManager
     ): WebSocketManager {
         return WebSocketManager(
-            context = context,
-            settingsDataStore = settingsDataStore,
-            locationManager = locationManager
+            context,
+            settingsDataStore,
+            locationManager
         )
     }
 }

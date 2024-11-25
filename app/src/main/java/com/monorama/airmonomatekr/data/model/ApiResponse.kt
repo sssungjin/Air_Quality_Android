@@ -28,22 +28,3 @@ data class SortInfo(
     val empty: Boolean,
     val unsorted: Boolean
 )
-
-data class SensorDataResponseDto(
-    val deviceId: String,
-    val timestamp: String,
-    val pm25Value: Float,
-    val pm25Level: Int,
-    val pm10Value: Float,
-    val pm10Level: Int,
-    val temperature: Float,
-    val temperatureLevel: Int,
-    val humidity: Float,
-    val humidityLevel: Int,
-    val co2Value: Float,
-    val co2Level: Int,
-    val vocValue: Float,
-    val vocLevel: Int,
-    val latitude: Double?,
-    val longitude: Double?
-)
