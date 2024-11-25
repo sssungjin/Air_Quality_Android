@@ -9,9 +9,10 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
-import com.monorama.airmonomatekr.data.repository.SensorData
+import com.monorama.airmonomatekr.data.model.SensorLogData
+import com.monorama.airmonomatekr.network.websocket.WebSocketManager
+import com.monorama.airmonomatekr.util.Constants
 import com.monorama.airmonomatekr.util.PermissionHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,15 +24,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
+import javax.inject.Inject
 
-class BleManager(private val context: Context) {
+class BleManager @Inject constructor(
+    private val context: Context,
+    private val webSocketManager: WebSocketManager
+) {
+    init {
+        // 웹소켓 연결 초기화
+        webSocketManager.connect(Constants.Api.WS_URL) { message ->
+            println("BleManager: Received WebSocket message: $message")
+        }
+    }
+
     private var bluetoothGatt: BluetoothGatt? = null
     private val bluetoothAdapter: BluetoothAdapter? by lazy {
         (context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager).adapter
     }
 
-    private val _sensorData = MutableStateFlow<SensorData?>(null)
-    val sensorData: StateFlow<SensorData?> = _sensorData.asStateFlow()
+    private val _sensorLogData = MutableStateFlow<SensorLogData?>(null)
+    val sensorLogData: StateFlow<SensorLogData?> = _sensorLogData.asStateFlow()
 
     private val bluetoothLeScanner by lazy {
         bluetoothAdapter?.bluetoothLeScanner
@@ -65,7 +77,7 @@ class BleManager(private val context: Context) {
 
             val device = result.device
             // SDK 28에서는 BLUETOOTH_CONNECT 권한 체크를 완전히 건너뜀
-            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S || 
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
                 ActivityCompat.checkSelfPermission(
                     context,
                     Manifest.permission.BLUETOOTH_CONNECT
@@ -111,7 +123,7 @@ class BleManager(private val context: Context) {
                     // 센서 데이터 특성 읽기
                     val service = gatt.getService(UUID.fromString("0000ffb0-0000-1000-8000-00805f9b34fb"))
                     val characteristic = service?.getCharacteristic(UUID.fromString("0000ffb3-0000-1000-8000-00805f9b34fb"))
-                    
+
                     if (characteristic == null) {
                         println("BleManager: Characteristic not found")
                         break
@@ -131,7 +143,7 @@ class BleManager(private val context: Context) {
                         println("BleManager: Reading characteristic (legacy)...")
                         gatt.readCharacteristic(characteristic)
                     }
-                    
+
                     delay(1000) // 1초 대기
                 } catch (e: Exception) {
                     println("BleManager: Error reading data: ${e.message}")
@@ -149,26 +161,71 @@ class BleManager(private val context: Context) {
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     println("BleManager: Successfully connected to GATT server")
-                    // Thread.sleep 대신 코루틴의 delay 사용
+
                     CoroutineScope(Dispatchers.IO).launch {
                         delay(1000) // 1초 대기
-                        if (ActivityCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.BLUETOOTH_CONNECT
-                            ) == PackageManager.PERMISSION_GRANTED
-                        ) {
-                            println("BleManager: Starting service discovery")
-                            gatt.discoverServices()
+
+                        // Android 12 (API 31) 이상
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.BLUETOOTH_CONNECT
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                println("BleManager: Starting service discovery")
+                                if (!gatt.discoverServices()) {
+                                    println("BleManager: Failed to start service discovery")
+                                    disconnect()
+                                }
+                            } else {
+                                println("BleManager: Missing BLUETOOTH_CONNECT permission")
+                                disconnect()
+                            }
+                        }
+                        // Android 11 이하 (API 30 이하)
+                        else {
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.ACCESS_FINE_LOCATION
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                println("BleManager: Starting service discovery (legacy)")
+                                if (!gatt.discoverServices()) {
+                                    println("BleManager: Failed to start service discovery")
+                                    disconnect()
+                                }
+                            } else {
+                                println("BleManager: Missing location permission")
+                                disconnect()
+                            }
                         }
                     }
                 }
                 BluetoothProfile.STATE_DISCONNECTED -> {
                     println("BleManager: Disconnected from GATT server")
                     dataCollectionJob?.cancel()
+                    closeGatt()
+                    _sensorLogData.value = null
+                }
+            }
+        }
+
+        private fun closeGatt() {
+            // Android 12 (API 31) 이상
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
                     bluetoothGatt?.close()
                     bluetoothGatt = null
-                    _sensorData.value = null
                 }
+            }
+            // Android 11 이하 (API 30 이하)
+            else {
+                bluetoothGatt?.close()
+                bluetoothGatt = null
             }
         }
 
@@ -176,7 +233,7 @@ class BleManager(private val context: Context) {
             println("BleManager: onServicesDiscovered status: $status")
             if (status == BluetoothGatt.GATT_SUCCESS) {
                 println("BleManager: Services discovered successfully")
-                
+
                 // 서비스 목록 출력
                 gatt.services.forEach { service ->
                     println("BleManager: Found service: ${service.uuid}")
@@ -210,11 +267,11 @@ class BleManager(private val context: Context) {
             characteristic: BluetoothGattCharacteristic,
             status: Int
         ) {
-            println("BleManager: onCharacteristicRead status: $status")
+            //println("BleManager: onCharacteristicRead status: $status")
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                println("BleManager: [Legacy] Read characteristic success")
+                //println("BleManager: [Legacy] Read characteristic success")
                 characteristic.value?.let { value ->
-                    println("BleManager: [Legacy] Received data length: ${value.size}")
+                    //println("BleManager: [Legacy] Received data length: ${value.size}")
                     parseSensorData(value)
                 }
             } else {
@@ -226,9 +283,9 @@ class BleManager(private val context: Context) {
             gatt: BluetoothGatt,
             characteristic: BluetoothGattCharacteristic
         ) {
-            println("BleManager: Characteristic changed")
+            //println("BleManager: Characteristic changed")
             characteristic.value?.let { value ->
-                println("BleManager: Received data length: ${value.size}")
+                //println("BleManager: Received data length: ${value.size}")
                 parseSensorData(value)
             }
         }
@@ -238,34 +295,38 @@ class BleManager(private val context: Context) {
         if (value.size < 18) return
 
         try {
-            val data = SensorData(
-                pm25 = SensorData.SensorValue(
+            val data = SensorLogData(
+                pm25 = SensorLogData.SensorValue(
                     value = ((value[0].toInt() and 0xFF) shl 8 or (value[1].toInt() and 0xFF)).toFloat(),
                     level = value[2].toInt() and 0xFF
                 ),
-                pm10 = SensorData.SensorValue(
+                pm10 = SensorLogData.SensorValue(
                     value = ((value[3].toInt() and 0xFF) shl 8 or (value[4].toInt() and 0xFF)).toFloat(),
                     level = value[5].toInt() and 0xFF
                 ),
-                temperature = SensorData.SensorValue(
+                temperature = SensorLogData.SensorValue(
                     value = ((value[6].toInt() and 0xFF) shl 8 or (value[7].toInt() and 0xFF)) / 10.0f,
                     level = value[8].toInt() and 0xFF
                 ),
-                humidity = SensorData.SensorValue(
+                humidity = SensorLogData.SensorValue(
                     value = ((value[9].toInt() and 0xFF) shl 8 or (value[10].toInt() and 0xFF)) / 10.0f,
                     level = value[11].toInt() and 0xFF
                 ),
-                co2 = SensorData.SensorValue(
+                co2 = SensorLogData.SensorValue(
                     value = ((value[12].toInt() and 0xFF) shl 8 or (value[13].toInt() and 0xFF)).toFloat(),
                     level = value[14].toInt() and 0xFF
                 ),
-                voc = SensorData.SensorValue(
+                voc = SensorLogData.SensorValue(
                     value = ((value[15].toInt() and 0xFF) shl 8 or (value[16].toInt() and 0xFF)).toFloat(),
                     level = value[17].toInt() and 0xFF
                 )
             )
-            _sensorData.value = data
-            println("BleManager: Parsed sensor data: $data")
+            _sensorLogData.value = data
+
+            // 웹소켓으로 데이터 전송
+            webSocketManager.sendSensorData(data)
+
+            println("BleManager: Parsed and sent sensor data: $data")
         } catch (e: Exception) {
             println("Error parsing sensor data: ${e.message}")
         }
@@ -274,20 +335,22 @@ class BleManager(private val context: Context) {
     fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
         println("BleManager: Starting scan...")
 
-        // Android 버전에 따른 권한 체크
+        // Android 12 (API 31) 이상
         val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
+            ) == PackageManager.PERMISSION_GRANTED &&
+                    ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+        }
+        // Android 11 이하 (API 30 이하)
+        else {
             ActivityCompat.checkSelfPermission(
                 context,
                 Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED ||
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_COARSE_LOCATION
             ) == PackageManager.PERMISSION_GRANTED
         }
 
@@ -304,8 +367,6 @@ class BleManager(private val context: Context) {
 
         discoveredDevices.clear()
         currentScanCallback = onDevicesFound
-
-        println("BleManager: Starting BLE scan with settings: ${scanSettings.scanMode}")
 
         try {
             bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
@@ -539,8 +600,8 @@ class BleManager(private val context: Context) {
 
     fun disconnect() {
         println("BleManager: Disconnecting...")
-        dataCollectionJob?.cancel() // 데이터 수집 중지
-        
+        dataCollectionJob?.cancel()
+
         if (!PermissionHelper.hasBluetoothPermissions(context)) {
             return
         }
@@ -554,7 +615,10 @@ class BleManager(private val context: Context) {
                 gatt.disconnect()
                 gatt.close()
                 bluetoothGatt = null
-                _sensorData.value = null
+                _sensorLogData.value = null
+
+                // 웹소켓 연결 해제
+                webSocketManager.disconnect()
             }
         }
     }

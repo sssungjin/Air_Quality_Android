@@ -7,24 +7,32 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.monorama.airmonomatekr.MainActivity
 import com.monorama.airmonomatekr.R
+import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.util.PermissionHelper
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class BluetoothService : Service() {
     private val serviceScope = CoroutineScope(Dispatchers.Default + Job())
     private lateinit var bleManager: BleManager
-    
+
+    @Inject
+    lateinit var webSocketManager: WebSocketManager
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected = _isConnected.asStateFlow()
 
+
     override fun onCreate() {
         super.onCreate()
-        bleManager = BleManager(this)
+        bleManager = BleManager(this, webSocketManager)
         createNotificationChannel()
     }
 
@@ -90,7 +98,7 @@ class BluetoothService : Service() {
     private fun createNotification(): Notification {
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent, 
+            this, 0, intent,
             PendingIntent.FLAG_IMMUTABLE
         )
 
