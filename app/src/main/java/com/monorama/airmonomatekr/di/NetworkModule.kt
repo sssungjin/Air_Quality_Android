@@ -1,8 +1,12 @@
 package com.monorama.airmonomatekr.di
 
 import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonDeserializer
+import com.google.gson.reflect.TypeToken
+import com.monorama.airmonomatekr.data.model.Project
 import com.monorama.airmonomatekr.network.api.ApiService
-import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.util.Constants
 import dagger.Module
 import dagger.Provides
@@ -36,9 +40,27 @@ object NetworkModule {
 
     @Provides
     @Singleton
+    fun provideGson(): Gson {
+        return GsonBuilder()
+            .registerTypeAdapter(
+                object : TypeToken<List<Project>>() {}.type,
+                JsonDeserializer { json, _, context ->
+                    // ["java.util.ArrayList", [...]] 형태의 배열에서 두 번째 요소를 파싱
+                    val jsonArray = json.asJsonArray
+                    val projectsArray = jsonArray.get(1).asJsonArray
+                    projectsArray.map { element ->
+                        context.deserialize<Project>(element, Project::class.java)
+                    }
+                }
+            )
+            .create()
+    }
+
+    @Provides
+    @Singleton
     fun provideRetrofit(okHttpClient: OkHttpClient): Retrofit {
         return Retrofit.Builder()
-            .baseUrl("https://air.monomate.kr/")
+            .baseUrl(Constants.Api.BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

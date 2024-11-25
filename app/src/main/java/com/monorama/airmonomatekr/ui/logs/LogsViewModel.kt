@@ -6,7 +6,6 @@ import androidx.lifecycle.viewModelScope
 import com.monorama.airmonomatekr.data.model.DateRange
 import com.monorama.airmonomatekr.data.model.Location
 import com.monorama.airmonomatekr.data.model.SearchRequest
-import com.monorama.airmonomatekr.data.model.SensorDataResponseDto
 import com.monorama.airmonomatekr.data.model.SensorLogData
 import com.monorama.airmonomatekr.util.Constants
 import com.monorama.airmonomatekr.network.api.ApiService
