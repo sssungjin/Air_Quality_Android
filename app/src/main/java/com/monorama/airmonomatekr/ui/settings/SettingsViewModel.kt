@@ -6,6 +6,7 @@ import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.monorama.airmonomatekr.data.local.SettingsDataStore
+import com.monorama.airmonomatekr.data.model.DeviceLocation
 import com.monorama.airmonomatekr.data.model.Project
 import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.data.model.UserSettings
@@ -40,6 +41,9 @@ class SettingsViewModel @Inject constructor(
     val deviceInfo: StateFlow<DeviceResponseDto?> = _deviceInfo.asStateFlow()
 
     private var selectedProjectId: Long? = null
+
+    private val _deviceLocation = MutableStateFlow(DeviceLocation())
+    val deviceLocation: StateFlow<DeviceLocation> = _deviceLocation.asStateFlow()
 
     init {
         loadDeviceInfo()
@@ -143,6 +147,17 @@ class SettingsViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 println("Error saving settings: ${e.message}")
+            }
+        }
+    }
+
+    fun updateDeviceLocation(location: DeviceLocation) {
+        viewModelScope.launch {
+            try {
+                // TODO: API 호출로 서버에 위치 정보 업데이트
+                _deviceLocation.value = location
+            } catch (e: Exception) {
+                println("Error updating device location: ${e.message}")
             }
         }
     }
