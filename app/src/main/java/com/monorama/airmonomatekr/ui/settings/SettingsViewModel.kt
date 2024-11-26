@@ -6,10 +6,13 @@ import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.monorama.airmonomatekr.data.local.SettingsDataStore
+import com.monorama.airmonomatekr.data.model.DeviceLocation
 import com.monorama.airmonomatekr.data.model.Project
 import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.data.model.UserSettings
 import com.monorama.airmonomatekr.network.api.ApiService
+import com.monorama.airmonomatekr.network.api.dto.DeviceLocationRequest
+import com.monorama.airmonomatekr.network.api.dto.DeviceLocationResponse
 import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationRequest
 import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -41,9 +44,19 @@ class SettingsViewModel @Inject constructor(
 
     private var selectedProjectId: Long? = null
 
+    private val _deviceLocation = MutableStateFlow(DeviceLocation())
+    val deviceLocation: StateFlow<DeviceLocation> = _deviceLocation.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(false)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
     init {
         loadDeviceInfo()
         loadProjects()
+        loadDeviceLocation()
     }
 
     private fun loadDeviceInfo() {
@@ -143,6 +156,58 @@ class SettingsViewModel @Inject constructor(
                 }
             } catch (e: Exception) {
                 println("Error saving settings: ${e.message}")
+            }
+        }
+    }
+
+    public fun loadDeviceLocation() {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                val response = apiService.getDevice(deviceId)
+                response.location?.let { location ->
+                    _deviceLocation.value = location  // DeviceLocation 타입이 같으므로 직접 할당
+                    println("Device location loaded: $location")
+                } ?: run {
+                    println("No location data available for device")
+                    _deviceLocation.value = DeviceLocation()  // 기본값 설정
+                }
+            } catch (e: Exception) {
+                println("Error loading device location: ${e.message}")
+                e.printStackTrace()
+                _deviceLocation.value = DeviceLocation()  // 에러 시 기본값 설정
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun updateDeviceLocation(location: DeviceLocation) {
+        viewModelScope.launch {
+            try {
+                _isLoading.value = true
+                _errorMessage.value = null
+
+                val request = DeviceLocationRequest(
+                    floorLevel = location.floorLevel,
+                    placeType = location.placeType,
+                    description = location.description
+                )
+
+                val response = apiService.updateDeviceLocation(deviceId, request)
+                
+                if (response.success) {
+                    _deviceLocation.value = location
+                    println("Device location updated successfully")
+                } else {
+                    _errorMessage.value = response.message
+                    println("Failed to update device location: ${response.message}")
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to update location: ${e.message}"
+                println("Error updating device location: ${e.message}")
+            } finally {
+                _isLoading.value = false
             }
         }
     }

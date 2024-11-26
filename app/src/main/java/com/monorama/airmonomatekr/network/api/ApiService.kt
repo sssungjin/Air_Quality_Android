@@ -2,6 +2,8 @@
 
  import com.monorama.airmonomatekr.data.model.ApiResponse
  import com.monorama.airmonomatekr.data.model.SearchRequest
+ import com.monorama.airmonomatekr.network.api.dto.DeviceLocationRequest
+ import com.monorama.airmonomatekr.network.api.dto.DeviceLocationResponse
  import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationRequest
  import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationResponse
  import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
@@ -9,25 +11,32 @@
  import retrofit2.http.Body
  import retrofit2.http.GET
  import retrofit2.http.POST
+ import retrofit2.http.PUT
  import retrofit2.http.Path
 
  interface ApiService {
-     @POST("/devices/search")
+     @POST("devices/search")
      suspend fun searchDevices(
          @Body request: SearchRequest
      ): ApiResponse
 
-     @GET("/devices/{deviceId}")
+     @GET("devices/{deviceId}")
      suspend fun getDevice(
          @Path("deviceId") deviceId: String
      ): DeviceResponseDto
 
-     @POST("/devices/{deviceId}/register")
+     @POST("devices/{deviceId}/register")
      suspend fun registerDevice(
          @Path("deviceId") deviceId: String,
          @Body request: DeviceRegistrationRequest
      ): DeviceRegistrationResponse
 
-     @GET("/projects")
+     @GET("projects")
      suspend fun getProjects(): ProjectResponse
+
+     @PUT("devices/{deviceId}/location")
+     suspend fun updateDeviceLocation(
+         @Path("deviceId") deviceId: String,
+         @Body request: DeviceLocationRequest
+     ): DeviceLocationResponse
  }

@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.data.model.UserSettings
+import com.monorama.airmonomatekr.ui.settings.components.DeviceLocationDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -20,15 +21,18 @@ fun SettingsScreen(
     val userSettings by viewModel.userSettings.collectAsState(initial = UserSettings())
     val projects by viewModel.projects.collectAsState()
     val deviceInfo by viewModel.deviceInfo.collectAsState()
+    var showLocationDialog by remember { mutableStateOf(false) }
+    val deviceLocation by viewModel.deviceLocation.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
-    // 선택된 프로젝트 이름 초기화 (디바이스 정보와 프로젝트 목록 기반)
+    // 선택된 프로젝트 이름 초기화
     var selectedProjectName by remember(deviceInfo, projects) {
         mutableStateOf(
             projects.find { it.projectId == deviceInfo?.projectId }?.projectName ?: ""
         )
     }
 
-    // userName과 email을 deviceInfo 기반으로 초기화
+    // userName과 email 초기화
     var userName by remember(deviceInfo) {
         mutableStateOf(deviceInfo?.userName ?: userSettings.userName)
     }
@@ -38,18 +42,13 @@ fun SettingsScreen(
     var transmissionMode by remember { mutableStateOf(userSettings.transmissionMode) }
     var expanded by remember { mutableStateOf(false) }
 
-    // 프로젝트 목록 로드
+
+    // SettingsScreen.kt의 LaunchedEffect
     LaunchedEffect(Unit) {
         viewModel.loadProjects()
+        viewModel.loadDeviceLocation()  // 화면 진입 시에도 위치 정보 로드
     }
 
-    // 디버그용 로그
-    LaunchedEffect(projects) {
-        println("Loaded projects: ${projects.size}")
-        projects.forEach { project ->
-            println("Project: ${project.projectName} (ID: ${project.projectId})")
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -59,9 +58,7 @@ fun SettingsScreen(
         // Project Dropdown
         ExposedDropdownMenuBox(
             expanded = expanded,
-            onExpandedChange = {
-                if (isEditing) expanded = !expanded
-            }
+            onExpandedChange = { if (isEditing) expanded = !expanded }
         ) {
             OutlinedTextField(
                 value = selectedProjectName,
@@ -86,9 +83,7 @@ fun SettingsScreen(
                 ) {
                     projects.forEach { project ->
                         DropdownMenuItem(
-                            text = {
-                                Text("${project.projectName}")
-                            },
+                            text = { Text(project.projectName) },
                             onClick = {
                                 selectedProjectName = project.projectName
                                 viewModel.setSelectedProjectId(project.projectId)
@@ -135,14 +130,16 @@ fun SettingsScreen(
                     .fillMaxWidth()
                     .selectable(
                         selected = transmissionMode == mode,
-                        onClick = { transmissionMode = mode }
+                        enabled = isEditing,
+                        onClick = { if (isEditing) transmissionMode = mode }
                     )
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioButton(
                     selected = transmissionMode == mode,
-                    onClick = { transmissionMode = mode }
+                    onClick = { if (isEditing) transmissionMode = mode },
+                    enabled = isEditing
                 )
                 Text(
                     text = when (mode) {
@@ -155,9 +152,35 @@ fun SettingsScreen(
             }
         }
 
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Device Location Button
+        Button(
+            onClick = {
+                viewModel.loadDeviceLocation()  // 다이얼로그를 열기 전에 위치 정보 로드
+                showLocationDialog = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Edit Device Location")
+        }
+
+        // Location Dialog
+        if (showLocationDialog) {
+            DeviceLocationDialog(
+                currentLocation = deviceLocation,
+                isLoading = isLoading,
+                onDismiss = { showLocationDialog = false },
+                onConfirm = { location ->
+                    viewModel.updateDeviceLocation(location)
+                    showLocationDialog = false
+                }
+            )
+        }
+
         Spacer(modifier = Modifier.weight(1f))
 
-        // Buttons
+        // Bottom Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -186,7 +209,6 @@ fun SettingsScreen(
                 OutlinedButton(
                     onClick = {
                         isEditing = false
-                        // Reset values
                         userName = userSettings.userName
                         email = userSettings.email
                         transmissionMode = userSettings.transmissionMode
