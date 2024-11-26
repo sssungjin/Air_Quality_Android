@@ -21,7 +21,6 @@ class LocationManager @Inject constructor(
 ) {
     suspend fun getCurrentLocation(): Pair<Double, Double>? = suspendCancellableCoroutine { continuation ->
         try {
-            // 위치 권한 체크
             if (!hasLocationPermission()) {
                 println("LocationManager: No location permission")
                 continuation.resume(null)
@@ -30,31 +29,9 @@ class LocationManager @Inject constructor(
 
             val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-            // GPS 활성화 체크
-            if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                println("LocationManager: GPS is disabled")
-                continuation.resume(null)
-                return@suspendCancellableCoroutine
-            }
-
-            // 마지막 알려진 위치 먼저 확인
-            if (ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED ||
-                ActivityCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.ACCESS_COARSE_LOCATION
-                ) == PackageManager.PERMISSION_GRANTED
-            ) {
-                val lastKnownLocation = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                if (lastKnownLocation != null) {
-                    println("LocationManager: Using last known location - Lat: ${lastKnownLocation.latitude}, Lng: ${lastKnownLocation.longitude}")
-                    continuation.resume(Pair(lastKnownLocation.latitude, lastKnownLocation.longitude))
-                    return@suspendCancellableCoroutine
-                }
-            } else {
-                println("LocationManager: No location permission")
+            if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
+                !locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                println("LocationManager: No location provider enabled")
                 continuation.resume(null)
                 return@suspendCancellableCoroutine
             }
@@ -62,8 +39,10 @@ class LocationManager @Inject constructor(
             val locationListener = object : LocationListener {
                 override fun onLocationChanged(location: Location) {
                     println("LocationManager: New location received - Lat: ${location.latitude}, Lng: ${location.longitude}")
-                    continuation.resume(Pair(location.latitude, location.longitude))
-                    locationManager.removeUpdates(this)
+                    if (!continuation.isCompleted) {
+                        continuation.resume(Pair(location.latitude, location.longitude))
+                        locationManager.removeUpdates(this)
+                    }
                 }
 
                 override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {
@@ -76,24 +55,28 @@ class LocationManager @Inject constructor(
 
                 override fun onProviderDisabled(provider: String) {
                     println("LocationManager: Provider disabled - $provider")
-                    if (provider == LocationManager.GPS_PROVIDER) {
-                        continuation.resume(null)
-                        locationManager.removeUpdates(this)
+                    // 모든 provider가 비활성화된 경우에만 null 반환
+                    if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) &&
+                        !locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+                        if (!continuation.isCompleted) {
+                            continuation.resume(null)
+                            locationManager.removeUpdates(this)
+                        }
                     }
                 }
             }
 
             // GPS와 Network provider 모두 시도
-            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
             var locationUpdateRequested = false
+            val providers = listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
 
             for (provider in providers) {
                 if (locationManager.isProviderEnabled(provider)) {
                     try {
                         locationManager.requestLocationUpdates(
                             provider,
-                            1000L, // 1초마다 업데이트
-                            1f,    // 1미터 이상 움직였을 때
+                            0L,    // 즉시 업데이트
+                            0f,    // 모든 위치 변화 감지
                             locationListener,
                             Looper.getMainLooper()
                         )
@@ -111,14 +94,14 @@ class LocationManager @Inject constructor(
                 return@suspendCancellableCoroutine
             }
 
-            // 타임아웃 설정
+            // 타임아웃 설정 (5초)
             Handler(Looper.getMainLooper()).postDelayed({
                 if (!continuation.isCompleted) {
                     println("LocationManager: Location request timed out")
                     continuation.resume(null)
                     locationManager.removeUpdates(locationListener)
                 }
-            }, 10000)
+            }, 5000)
 
             continuation.invokeOnCancellation {
                 println("LocationManager: Location request cancelled")
@@ -128,7 +111,9 @@ class LocationManager @Inject constructor(
         } catch (e: Exception) {
             println("LocationManager: Error getting location - ${e.message}")
             e.printStackTrace()
-            continuation.resume(null)
+            if (!continuation.isCompleted) {
+                continuation.resume(null)
+            }
         }
     }
 
