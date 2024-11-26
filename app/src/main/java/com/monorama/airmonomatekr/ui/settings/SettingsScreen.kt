@@ -23,6 +23,7 @@ fun SettingsScreen(
     val deviceInfo by viewModel.deviceInfo.collectAsState()
     var showLocationDialog by remember { mutableStateOf(false) }
     val deviceLocation by viewModel.deviceLocation.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     // 선택된 프로젝트 이름 초기화
     var selectedProjectName by remember(deviceInfo, projects) {
@@ -41,9 +42,13 @@ fun SettingsScreen(
     var transmissionMode by remember { mutableStateOf(userSettings.transmissionMode) }
     var expanded by remember { mutableStateOf(false) }
 
+
+    // SettingsScreen.kt의 LaunchedEffect
     LaunchedEffect(Unit) {
         viewModel.loadProjects()
+        viewModel.loadDeviceLocation()  // 화면 진입 시에도 위치 정보 로드
     }
+
 
     Column(
         modifier = Modifier
@@ -149,9 +154,12 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Device Location Button - 항상 클릭 가능하도록 수정
+        // Device Location Button
         Button(
-            onClick = { showLocationDialog = true },
+            onClick = {
+                viewModel.loadDeviceLocation()  // 다이얼로그를 열기 전에 위치 정보 로드
+                showLocationDialog = true
+            },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Edit Device Location")
@@ -161,6 +169,7 @@ fun SettingsScreen(
         if (showLocationDialog) {
             DeviceLocationDialog(
                 currentLocation = deviceLocation,
+                isLoading = isLoading,
                 onDismiss = { showLocationDialog = false },
                 onConfirm = { location ->
                     viewModel.updateDeviceLocation(location)
