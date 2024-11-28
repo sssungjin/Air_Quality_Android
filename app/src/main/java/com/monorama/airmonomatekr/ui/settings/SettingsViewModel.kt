@@ -73,7 +73,7 @@ class SettingsViewModel @Inject constructor(
                         projectId = response.projectId?.toString() ?: "",
                         userName = response.userName,
                         email = response.userEmail,
-                        transmissionMode = TransmissionMode.REALTIME
+                        transmissionMode = response.transmissionMode
                     )
                 )
                 println("Device info loaded: $response")
@@ -134,7 +134,8 @@ class SettingsViewModel @Inject constructor(
                         deviceId = deviceId,
                         projectId = projectId,
                         userName = userName,
-                        userEmail = email
+                        userEmail = email,
+                        transmissionMode = transmissionMode
                     )
 
                     val response = apiService.registerDevice(deviceId, request)

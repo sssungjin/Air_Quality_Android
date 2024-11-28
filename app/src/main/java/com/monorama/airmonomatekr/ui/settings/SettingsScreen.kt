@@ -39,7 +39,9 @@ fun SettingsScreen(
     var email by remember(deviceInfo) {
         mutableStateOf(deviceInfo?.userEmail ?: userSettings.email)
     }
-    var transmissionMode by remember { mutableStateOf(userSettings.transmissionMode) }
+    var transmissionMode by remember(deviceInfo, userSettings) {
+        mutableStateOf(deviceInfo?.transmissionMode ?: userSettings.transmissionMode)
+    }
     var expanded by remember { mutableStateOf(false) }
 
 

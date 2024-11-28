@@ -1,4 +1,4 @@
-package com.monorama.airmonomatekr.data.model
+package com.monorama.airmonomatekr.network.api.dto
 
 data class ApiResponse(
     val content: List<Any>,

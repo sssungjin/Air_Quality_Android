@@ -28,4 +28,10 @@ object AppModule {
     ): LocationManager {
         return LocationManager(context)
     }
+
+    @Provides
+    @Singleton
+    fun provideContext(@ApplicationContext context: Context): Context {
+        return context
+    }
 }

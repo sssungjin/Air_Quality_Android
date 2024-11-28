@@ -1,13 +1,15 @@
  package com.monorama.airmonomatekr.network.api
 
- import com.monorama.airmonomatekr.data.model.ApiResponse
+ import com.monorama.airmonomatekr.network.api.dto.ApiResponse
  import com.monorama.airmonomatekr.data.model.SearchRequest
  import com.monorama.airmonomatekr.network.api.dto.DeviceLocationRequest
  import com.monorama.airmonomatekr.network.api.dto.DeviceLocationResponse
  import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationRequest
  import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationResponse
  import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
+ import com.monorama.airmonomatekr.network.api.dto.LogUploadResponse
  import com.monorama.airmonomatekr.network.api.dto.ProjectResponse
+ import com.monorama.airmonomatekr.network.api.dto.SensorDataLogDto
  import retrofit2.http.Body
  import retrofit2.http.GET
  import retrofit2.http.POST
@@ -39,4 +41,14 @@
          @Path("deviceId") deviceId: String,
          @Body request: DeviceLocationRequest
      ): DeviceLocationResponse
+
+//     @POST("sensor-data/logs")
+//     suspend fun uploadSensorLogs(
+//         @Body logs: List<SensorDataLogDto>
+//     ): LogUploadResponse
+
+     @POST("sensor-data/batch")  // 엔드포인트도 서버와 일치하도록 수정
+     suspend fun uploadSensorLogs(
+         @Body logs: List<SensorDataLogDto>
+     ): LogUploadResponse
  }

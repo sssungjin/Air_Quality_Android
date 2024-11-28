@@ -30,6 +30,7 @@ class BleManager @Inject constructor(
     private val context: Context,
     private val webSocketManager: WebSocketManager
 ) {
+
     init {
         // 웹소켓 연결 초기화
         webSocketManager.connect(Constants.Api.WS_URL) { message ->
