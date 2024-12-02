@@ -1,6 +1,7 @@
 package com.monorama.airmonomatekr.service.bluetooth
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.bluetooth.*
 import android.bluetooth.le.ScanCallback
 import android.bluetooth.le.ScanFilter
@@ -10,10 +11,13 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.ActivityCompat
+import com.monorama.airmonomatekr.data.local.SettingsDataStore
 import com.monorama.airmonomatekr.data.model.SensorLogData
+import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.util.Constants
 import com.monorama.airmonomatekr.util.PermissionHelper
+import com.monorama.airmonomatekr.util.SensorLogManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +25,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import android.provider.Settings
+import com.monorama.airmonomatekr.util.WorkerScheduler
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
@@ -28,13 +34,40 @@ import javax.inject.Inject
 
 class BleManager @Inject constructor(
     private val context: Context,
-    private val webSocketManager: WebSocketManager
+    private val webSocketManager: WebSocketManager,
+    private val settingsDataStore: SettingsDataStore,
+    private val sensorLogManager: SensorLogManager,
+    private val workerScheduler: WorkerScheduler
 ) {
 
+    @SuppressLint("HardwareIds")
+    private val deviceId = Settings.Secure.getString(
+        context.contentResolver,
+        Settings.Secure.ANDROID_ID
+    )
+
+    private var isRealTimeMode = true
+    private var currentProjectId: Long? = null
+
     init {
-        // 웹소켓 연결 초기화
-        webSocketManager.connect(Constants.Api.WS_URL) { message ->
-            println("BleManager: Received WebSocket message: $message")
+        CoroutineScope(Dispatchers.IO).launch {
+            settingsDataStore.userSettings.collect { settings ->
+                isRealTimeMode = settings.transmissionMode == TransmissionMode.REALTIME
+                currentProjectId = settings.projectId.toLongOrNull()
+                
+                when (settings.transmissionMode) {
+                    TransmissionMode.REALTIME -> {
+                        webSocketManager.connect(Constants.Api.WS_URL) { message ->
+                            println("BleManager: Received WebSocket message: $message")
+                        }
+                        workerScheduler.cancelAllWork()
+                    }
+                    TransmissionMode.MINUTE, TransmissionMode.DAILY -> {
+                        webSocketManager.disconnect()
+                        workerScheduler.scheduleSensorDataWork(settings.transmissionMode)
+                    }
+                }
+            }
         }
     }
 
@@ -141,7 +174,7 @@ class BleManager @Inject constructor(
                         }
                     } else {
                         // SDK 28용 레거시 방식
-                        println("BleManager: Reading characteristic (legacy)...")
+                        //println("BleManager: Reading characteristic (legacy)...")
                         gatt.readCharacteristic(characteristic)
                     }
 
@@ -324,12 +357,18 @@ class BleManager @Inject constructor(
             )
             _sensorLogData.value = data
 
-            // 웹소켓으로 데이터 전송
-            webSocketManager.sendSensorData(data)
-
-            println("BleManager: Parsed and sent sensor data: $data")
+            when (isRealTimeMode) {
+                true -> webSocketManager.sendSensorData(data)
+                false -> {
+                    currentProjectId?.let { projectId ->
+                        CoroutineScope(Dispatchers.IO).launch {
+                            sensorLogManager.writeLog(data, deviceId, projectId)
+                        }
+                    }
+                }
+            }
         } catch (e: Exception) {
-            println("Error parsing sensor data: ${e.message}")
+            println("BleManager: Error parsing sensor data: ${e.message}")
         }
     }
 

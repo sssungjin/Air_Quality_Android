@@ -1,79 +1,92 @@
 package com.monorama.airmonomatekr.util
 
-import androidx.work.BackoffPolicy
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import androidx.core.app.AlarmManagerCompat
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequest
-import androidx.work.PeriodicWorkRequest
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
-import androidx.work.WorkRequest
-import com.monorama.airmonomatekr.data.local.SettingsDataStore
 import com.monorama.airmonomatekr.data.model.TransmissionMode
-import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class WorkerScheduler @Inject constructor(
-    private val workManager: WorkManager,
-    private val settingsDataStore: SettingsDataStore
+    private val context: Context,
+    private val workManager: WorkManager
 ) {
-    suspend fun scheduleSensorDataWork() {
-        val settings = settingsDataStore.userSettings.first()
+    private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // 기존 작업 취소
-        workManager.cancelUniqueWork("sensor_data_work")
-
-        when (settings.transmissionMode) {
-            TransmissionMode.REALTIME -> {
-                // 실시간 모드에서는 작업 스케줄링 하지 않음
-            }
+    fun scheduleSensorDataWork(mode: TransmissionMode) {
+        when (mode) {
             TransmissionMode.MINUTE -> {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (!alarmManager.canScheduleExactAlarms()) {
+                        // 사용자에게 정확한 알람 권한 요청
+                        val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(intent)
+                        return
+                    }
+                }
 
-                val request = PeriodicWorkRequestBuilder<SensorDataWorker>(
-                    15, TimeUnit.MINUTES,
-                    5, TimeUnit.MINUTES
-                ).setConstraints(constraints)
-                    .setBackoffCriteria(
-                        BackoffPolicy.LINEAR,
-                        WorkRequest.MIN_BACKOFF_MILLIS,  // MIN_BACKOFF_MILLIS 대신 DEFAULT_BACKOFF_MILLIS 사용
-                        TimeUnit.MILLISECONDS
-                    )
-                    .build()
+                val intent = Intent(context, SensorDataAlarmReceiver::class.java).apply {
+                    action = "com.monorama.airmonomatekr.SENSOR_DATA_ALARM"
+                }
 
-                scheduleUniqueWork(request)
+                val pendingIntent = PendingIntent.getBroadcast(
+                    context,
+                    0,
+                    intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                // Doze 모드에서도 동작하도록 설정
+                AlarmManagerCompat.setExactAndAllowWhileIdle(
+                    alarmManager,
+                    AlarmManager.RTC_WAKEUP,
+                    System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(Constants.Alarm.MINUTE_INTERVAL),
+                    pendingIntent
+                )
             }
             TransmissionMode.DAILY -> {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
-
                 val request = PeriodicWorkRequestBuilder<SensorDataWorker>(
-                    24, TimeUnit.HOURS
-                ).setConstraints(constraints)
-                    .setBackoffCriteria(
-                        BackoffPolicy.LINEAR,
-                        WorkRequest.MIN_BACKOFF_MILLIS,
-                        TimeUnit.MILLISECONDS
-                    )
+                    Constants.Alarm.DAILY_INTERVAL, TimeUnit.HOURS
+                ).setConstraints(
+                    Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                ).setInitialDelay(1, TimeUnit.MINUTES)  // 첫 실행을 위한 약간의 지연
                     .build()
 
-                scheduleUniqueWork(request)
+                workManager.enqueueUniquePeriodicWork(
+                    "sensor_data_work",
+                    ExistingPeriodicWorkPolicy.UPDATE,
+                    request
+                )
             }
+            else -> println("Now mode is: $mode")
         }
     }
 
-    private fun scheduleUniqueWork(request: PeriodicWorkRequest) {
-        workManager.enqueueUniquePeriodicWork(
-            "sensor_data_work",
-            ExistingPeriodicWorkPolicy.UPDATE,
-            request
+    fun cancelAllWork() {
+        workManager.cancelUniqueWork("sensor_data_work")
+        val intent = Intent(context, SensorDataAlarmReceiver::class.java).apply {
+            action = "com.monorama.airmonomatekr.SENSOR_DATA_ALARM"
+        }
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            0,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+        alarmManager.cancel(pendingIntent)
     }
 }

@@ -84,8 +84,8 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
     implementation(libs.androidx.hilt.navigation.compose)
-    ksp(libs.androidx.hilt.compiler)
     implementation(libs.androidx.hilt.work)
+    ksp(libs.androidx.hilt.compiler)
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)
@@ -93,6 +93,8 @@ dependencies {
     // WorkManager
     implementation(libs.androidx.work.runtime.ktx)
 
-
+    // Jackson
+    implementation(libs.jackson.databind)
+    implementation(libs.jackson.kotlin)
 
 }

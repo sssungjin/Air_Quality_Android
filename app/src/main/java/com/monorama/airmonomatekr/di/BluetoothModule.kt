@@ -1,8 +1,11 @@
 package com.monorama.airmonomatekr.di
 
 import android.content.Context
+import com.monorama.airmonomatekr.data.local.SettingsDataStore
 import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.service.bluetooth.BleManager
+import com.monorama.airmonomatekr.util.SensorLogManager
+import com.monorama.airmonomatekr.util.WorkerScheduler
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,8 +21,17 @@ object BluetoothModule {
     @Singleton
     fun provideBleManager(
         @ApplicationContext context: Context,
-        webSocketManager: WebSocketManager
+        webSocketManager: WebSocketManager,
+        settingsDataStore: SettingsDataStore,
+        sensorLogManager: SensorLogManager,
+        workerScheduler: WorkerScheduler
     ): BleManager {
-        return BleManager(context, webSocketManager)
+        return BleManager(
+            context = context,
+            webSocketManager = webSocketManager,
+            settingsDataStore = settingsDataStore,
+            sensorLogManager = sensorLogManager,
+            workerScheduler = workerScheduler
+        )
     }
 }

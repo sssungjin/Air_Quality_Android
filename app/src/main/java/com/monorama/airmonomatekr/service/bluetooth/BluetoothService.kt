@@ -7,8 +7,11 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.monorama.airmonomatekr.MainActivity
 import com.monorama.airmonomatekr.R
+import com.monorama.airmonomatekr.data.local.SettingsDataStore
 import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.util.PermissionHelper
+import com.monorama.airmonomatekr.util.SensorLogManager
+import com.monorama.airmonomatekr.util.WorkerScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -26,13 +29,22 @@ class BluetoothService : Service() {
     @Inject
     lateinit var webSocketManager: WebSocketManager
 
+    @Inject
+    lateinit var settingsDataStore: SettingsDataStore
+
+    @Inject
+    lateinit var sensorLogManager: SensorLogManager
+
+    @Inject
+    lateinit var workerScheduler: WorkerScheduler
+
     private val _isConnected = MutableStateFlow(false)
     val isConnected = _isConnected.asStateFlow()
 
 
     override fun onCreate() {
         super.onCreate()
-        bleManager = BleManager(this, webSocketManager)
+        bleManager = BleManager(this, webSocketManager, settingsDataStore, sensorLogManager, workerScheduler)
         createNotificationChannel()
     }
 

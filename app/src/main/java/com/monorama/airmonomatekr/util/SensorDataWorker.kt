@@ -5,48 +5,39 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.monorama.airmonomatekr.data.local.SettingsDataStore
-import com.monorama.airmonomatekr.data.model.TransmissionMode
-import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.first
+import java.util.Date
 
 @HiltWorker
 class SensorDataWorker @AssistedInject constructor(
     @Assisted context: Context,
     @Assisted workerParams: WorkerParameters,
     private val sensorLogManager: SensorLogManager,
-    private val settingsDataStore: SettingsDataStore,
-    private val webSocketManager: WebSocketManager
+    private val settingsDataStore: SettingsDataStore
 ) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        val settings = settingsDataStore.userSettings.first()
+        val startTime = System.currentTimeMillis()
+        println("SensorDataWorker: Starting work at ${Date(startTime)}")
 
-        return when (settings.transmissionMode) {
-            TransmissionMode.REALTIME -> {
-                // 실시간 모드에서는 아무것도 하지 않음 (WebSocket이 처리)
-                Result.success()
-            }
-            TransmissionMode.MINUTE -> {
-                // 1분마다 실행되는 작업
-                try {
-                    sensorLogManager.uploadPendingLogs()
-                    Result.success()
-                } catch (e: Exception) {
-                    Result.retry()
-                }
-            }
-            TransmissionMode.DAILY -> {
-                // 매일 실행되는 작업
-                try {
-                    sensorLogManager.uploadPendingLogs()
-                    Result.success()
-                } catch (e: Exception) {
-                    Result.retry()
-                }
-            }
+        return try {
+            // 현재 모드 확인
+            val currentMode = settingsDataStore.getTransmissionMode().first()
+            println("SensorDataWorker: Current transmission mode: $currentMode")
+
+            sensorLogManager.uploadPendingLogs()
+
+            val endTime = System.currentTimeMillis()
+            println("SensorDataWorker: Work completed successfully at ${Date(endTime)}")
+            println("SensorDataWorker: Execution took ${endTime - startTime}ms")
+
+            Result.success()
+        } catch (e: Exception) {
+            println("SensorDataWorker: Work failed - ${e.message}")
+            e.printStackTrace()
+            Result.retry()
         }
     }
 }

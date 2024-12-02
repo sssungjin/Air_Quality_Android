@@ -5,6 +5,7 @@ import androidx.work.Configuration
 import androidx.hilt.work.HiltWorkerFactory
 import dagger.hilt.android.HiltAndroidApp
 import javax.inject.Inject
+import androidx.work.WorkManager
 
 @HiltAndroidApp
 class AirMonoMateApplication : Application(), Configuration.Provider {

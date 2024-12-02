@@ -9,9 +9,11 @@
  import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
  import com.monorama.airmonomatekr.network.api.dto.LogUploadResponse
  import com.monorama.airmonomatekr.network.api.dto.ProjectResponse
- import com.monorama.airmonomatekr.network.api.dto.SensorDataLogDto
+ import com.monorama.airmonomatekr.network.api.dto.SensorDataPayload
+ import okhttp3.RequestBody
  import retrofit2.http.Body
  import retrofit2.http.GET
+ import retrofit2.http.Headers
  import retrofit2.http.POST
  import retrofit2.http.PUT
  import retrofit2.http.Path
@@ -48,7 +50,6 @@
 //     ): LogUploadResponse
 
      @POST("sensor-data/batch")  // 엔드포인트도 서버와 일치하도록 수정
-     suspend fun uploadSensorLogs(
-         @Body logs: List<SensorDataLogDto>
-     ): LogUploadResponse
+     @Headers("Content-Type: application/json")
+     suspend fun uploadSensorLogs(@Body payload: RequestBody): LogUploadResponse
  }

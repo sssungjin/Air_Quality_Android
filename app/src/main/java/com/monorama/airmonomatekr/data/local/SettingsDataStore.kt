@@ -35,6 +35,12 @@ class SettingsDataStore @Inject constructor(
         )
     }
 
+    fun getTransmissionMode(): Flow<TransmissionMode> = context.dataStore.data.map { preferences ->
+        TransmissionMode.valueOf(
+            preferences[PreferencesKeys.TRANSMISSION_MODE] ?: TransmissionMode.REALTIME.name
+        )
+    }
+
     suspend fun updateSettings(settings: UserSettings) {
         context.dataStore.edit { preferences ->
             preferences[PreferencesKeys.PROJECT_ID] = settings.projectId

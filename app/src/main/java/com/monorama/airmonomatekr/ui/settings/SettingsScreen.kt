@@ -1,11 +1,16 @@
 package com.monorama.airmonomatekr.ui.settings
 
+import android.annotation.SuppressLint
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.monorama.airmonomatekr.data.model.TransmissionMode
@@ -24,6 +29,7 @@ fun SettingsScreen(
     var showLocationDialog by remember { mutableStateOf(false) }
     val deviceLocation by viewModel.deviceLocation.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    var showWebView by remember { mutableStateOf(false) }
 
     // 선택된 프로젝트 이름 초기화
     var selectedProjectName by remember(deviceInfo, projects) {
@@ -44,6 +50,9 @@ fun SettingsScreen(
     }
     var expanded by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+
+    val deviceId = deviceInfo?.deviceId
 
     // SettingsScreen.kt의 LaunchedEffect
     LaunchedEffect(Unit) {
@@ -158,13 +167,30 @@ fun SettingsScreen(
 
         // Device Location Button
         Button(
-            onClick = {
-                viewModel.loadDeviceLocation()  // 다이얼로그를 열기 전에 위치 정보 로드
-                showLocationDialog = true
-            },
+            onClick = { showLocationDialog = true },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Edit Device Location")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Project Info Button
+        Button(
+            onClick = {
+                val projectId = deviceInfo?.projectId ?: return@Button
+                val url = buildString {
+                    append("https://air.monomate.kr/info")
+                    append("?deviceId=$deviceId")
+                    append("&projectId=$projectId")
+                }
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = deviceInfo?.projectId != null
+        ) {
+            Text("Visit Project Info Page")
         }
 
         // Location Dialog

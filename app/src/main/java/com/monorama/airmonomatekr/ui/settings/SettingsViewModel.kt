@@ -29,6 +29,7 @@ class SettingsViewModel @Inject constructor(
     private val apiService: ApiService,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
+    @SuppressLint("HardwareIds")
     private val deviceId = Settings.Secure.getString(
         context.contentResolver,
         Settings.Secure.ANDROID_ID
