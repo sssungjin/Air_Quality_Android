@@ -35,7 +35,6 @@ class HomeViewModel @Inject constructor(
     private val _isCollectingData = MutableStateFlow(false)
     val isCollectingData: StateFlow<Boolean> = _isCollectingData.asStateFlow()
 
-    // BleManager의 sensorData를 직접 사용
     val sensorData = bleManager.sensorLogData
 
     fun startScan() {
@@ -101,9 +100,51 @@ class HomeViewModel @Inject constructor(
 
     fun disconnect() {
         viewModelScope.launch {
-            bleManager.disconnect()
-            _isConnected.value = false
-            _isCollectingData.value = false
+            try {
+                println("HomeViewModel: Starting disconnect process...")
+
+                // 1. 스캔 중지
+                stopScan()
+
+                // 2. BLE 연결 해제
+                bleManager.disconnect()
+
+                // 3. 상태 초기화
+                _isConnected.value = false
+                _isCollectingData.value = false
+                _discoveredDevices.value = emptyList()
+
+                // 4. 블루투스 관련 상태 재설정
+                val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+                if (ActivityCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    bluetoothManager.adapter?.cancelDiscovery()
+                }
+
+                println("HomeViewModel: Disconnect process completed")
+            } catch (e: Exception) {
+                println("HomeViewModel: Error during disconnect: ${e.message}")
+                // 에러가 발생하더라도 상태는 초기화
+                _isConnected.value = false
+                _isCollectingData.value = false
+                e.printStackTrace()
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        viewModelScope.launch {
+            try {
+                disconnect()
+                // ViewModel이 제거될 때 모든 리소스 정리
+                bleManager.disconnect()
+            } catch (e: Exception) {
+                println("HomeViewModel: Error during cleanup: ${e.message}")
+            }
         }
     }
 
@@ -128,10 +169,5 @@ class HomeViewModel @Inject constructor(
         }
 
         return true
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        bleManager.disconnect()
     }
 }

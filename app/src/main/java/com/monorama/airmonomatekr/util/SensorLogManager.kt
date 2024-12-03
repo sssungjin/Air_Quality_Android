@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.monorama.airmonomatekr.data.model.SensorLogData
 import com.monorama.airmonomatekr.network.api.ApiService
 import com.monorama.airmonomatekr.network.api.dto.SensorDataLogDto
+import com.monorama.airmonomatekr.util.LocationManager
 import com.monorama.airmonomatekr.network.api.dto.SensorDataPayload
 import dagger.hilt.android.qualifiers.ApplicationContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -23,40 +24,48 @@ import javax.inject.Singleton
 class SensorLogManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val apiService: ApiService,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val locationManager: LocationManager
 ) {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-    // Asia/Seoul 시간대로 ISO 8601 형식 포매터 설정
-    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-        timeZone = TimeZone.getTimeZone("Asia/Seoul")
-    }
+    // ISO 8601 형식 포매터 설정
+    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+    // 시간대 설정 주석 처리
+    // .apply {
+    //     timeZone = TimeZone.getTimeZone("Asia/Seoul")
+    // }
     private val logFolder = File(context.filesDir, "sensor_logs")
 
     init {
         logFolder.mkdirs()
     }
 
-    fun writeLog(sensorData: SensorLogData, deviceId: String, projectId: Long) {
+    suspend fun writeLog(sensorData: SensorLogData, deviceId: String, projectId: Long) {
         val today = dateFormat.format(Date())
         val logFile = File(logFolder, "${today}_${deviceId}.csv")
 
         if (!logFile.exists()) {
-            // 헤더 작성
+            // 헤더 작성 (위도, 경도 추가)
             logFile.writeText("timestamp,deviceId,projectId,pm25Value,pm25Level,pm10Value,pm10Level," +
-                    "temperature,temperatureLevel,humidity,humidityLevel,co2Value,co2Level,vocValue,vocLevel\n")
+                    "temperature,temperatureLevel,humidity,humidityLevel,co2Value,co2Level,vocValue,vocLevel,latitude,longitude\n")
         }
 
-        // timestamp를 서울 시간대 기준 ISO 8601 형식으로 포맷팅
         val formattedTimestamp = timestampFormat.format(Date(sensorData.timestamp))
 
-        // 데이터 작성
+        // 위도, 경도 정보 가져오기
+        val location = locationManager.getCurrentLocation()
+        val latitude = location?.first ?: 0.0
+        val longitude = location?.second ?: 0.0
+
+        // 데이터 작성 (위도, 경도 추가)
         logFile.appendText("${formattedTimestamp},${deviceId},${projectId}," +
                 "${sensorData.pm25.value},${sensorData.pm25.level}," +
                 "${sensorData.pm10.value},${sensorData.pm10.level}," +
                 "${sensorData.temperature.value},${sensorData.temperature.level}," +
                 "${sensorData.humidity.value},${sensorData.humidity.level}," +
                 "${sensorData.co2.value},${sensorData.co2.level}," +
-                "${sensorData.voc.value},${sensorData.voc.level}\n")
+                "${sensorData.voc.value},${sensorData.voc.level}," +
+                "$latitude,$longitude\n")
     }
 
     private fun convertToJsonFormat(logs: List<SensorDataLogDto>): String {
@@ -90,11 +99,14 @@ class SensorLogManager @Inject constructor(
                         "value" to log.vocValue,
                         "level" to log.vocLevel
                     )
+                ),
+                "location" to mapOf(  // 위치 정보 추가
+                    "latitude" to log.latitude,
+                    "longitude" to log.longitude
                 )
             )
         }
 
-        // 디버깅을 위해 예쁘게 출력
         return objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(payload)
     }
 
@@ -140,15 +152,15 @@ class SensorLogManager @Inject constructor(
     private fun parseCsvFile(file: File): List<SensorDataLogDto> {
         return try {
             file.readLines()
-                .drop(1)  // 헤더 제외
+                .drop(1)
                 .mapNotNull { line ->
                     try {
                         val values = line.split(",")
-                        // timestamp는 이미 ISO 8601 형식이므로 직접 사용
+                        // 위도, 경도 파싱 추가
                         SensorDataLogDto(
                             deviceId = values[1],
                             projectId = values[2].toLong(),
-                            timestamp = values[0],  // ISO 8601 형식 문자열 직접 사용
+                            timestamp = values[0],
                             pm25Value = values[3].toDouble(),
                             pm25Level = values[4].toInt(),
                             pm10Value = values[5].toDouble(),
@@ -161,8 +173,8 @@ class SensorLogManager @Inject constructor(
                             co2Level = values[12].toInt(),
                             vocValue = values[13].toDouble(),
                             vocLevel = values[14].toInt(),
-                            latitude = values.getOrNull(15)?.toDoubleOrNull(),
-                            longitude = values.getOrNull(16)?.toDoubleOrNull()
+                            latitude = values[15].toDouble(),
+                            longitude = values[16].toDouble()
                         )
                     } catch (e: Exception) {
                         println("Error parsing line: $line, Error: ${e.message}")

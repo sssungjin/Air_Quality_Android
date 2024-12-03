@@ -16,4 +16,8 @@ object Constants {
         const val MINUTE_INTERVAL = 5L  // 5분 간격
         const val DAILY_INTERVAL = 24L  // 24시간 간격
     }
+
+    object WebUrl {
+        const val WEB_URL = "https://air.monomate.kr"
+    }
 }

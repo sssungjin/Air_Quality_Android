@@ -1,6 +1,7 @@
 package com.monorama.airmonomatekr.ui.home
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -16,6 +17,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import com.monorama.airmonomatekr.service.bluetooth.BluetoothService
 import com.monorama.airmonomatekr.ui.home.components.SensorDataCard
 import com.monorama.airmonomatekr.ui.home.components.SensorDataGrid
 import com.monorama.airmonomatekr.util.PermissionHelper
@@ -31,9 +33,24 @@ fun HomeScreen(
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
     var showDeviceList by remember { mutableStateOf(false) }
-
-    // 센서 데이터 상태 추가
     val sensorData by viewModel.sensorData.collectAsState()
+
+    fun handleDisconnect() {
+        // 1. 서비스 중지 액션 전송
+        val stopIntent = Intent(context, BluetoothService::class.java).apply {
+            action = BluetoothService.ACTION_STOP_FOREGROUND
+        }
+        context.startService(stopIntent)
+
+        // 2. 연결 해제 액션 전송
+        val disconnectIntent = Intent(context, BluetoothService::class.java).apply {
+            action = BluetoothService.ACTION_DISCONNECT
+        }
+        context.startService(disconnectIntent)
+
+        // 3. ViewModel의 disconnect 호출
+        viewModel.disconnect()
+    }
 
     Column(
         modifier = Modifier
@@ -53,15 +70,14 @@ fun HomeScreen(
                     text = if (isConnected) "Connected" else "Disconnected",
                     style = MaterialTheme.typography.titleMedium,
                     color = if (isConnected) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.error
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 Button(
                     onClick = {
                         if (isConnected) {
-                            viewModel.disconnect()
+                            handleDisconnect()  // 수정된 부분: disconnect 핸들러 호출
                         } else {
-                            // 블루투스 권한이 없는 경우에만 권한 요청
                             if (!PermissionHelper.hasRequiredPermissions(context)) {
                                 onBluetoothPermissionNeeded()
                             } else {
@@ -72,13 +88,14 @@ fun HomeScreen(
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isConnected) MaterialTheme.colorScheme.error
-                                       else MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.primary
                     )
                 ) {
                     Text(if (isConnected) "Disconnect" else "Connect")
                 }
             }
         }
+
 
         // 블루투스 디바이스 목록 다이얼로그
         if (showDeviceList) {

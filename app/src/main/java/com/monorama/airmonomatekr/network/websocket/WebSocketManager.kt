@@ -20,6 +20,9 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import java.time.Instant
+import java.time.ZoneId
+import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -95,13 +98,33 @@ class WebSocketManager @Inject constructor(
                         return@launch
                     }
 
+                    // 한국 시간으로 현재 시간 생성
+                    val timestamp = ZonedDateTime
+                        .now()
+                        .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+                    // 한국 시간대 설정 주석 처리
+                    // val koreaTimestamp = ZonedDateTime
+                    //     .now(ZoneId.of("Asia/Seoul"))
+                    //     .format(DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"))
+
+                    val sensorDataJson = JsonObject().apply {
+                        add("co2", createSensorValueJson(data.co2))
+                        add("humidity", createSensorValueJson(data.humidity))
+                        add("pm10", createSensorValueJson(data.pm10))
+                        add("pm25", createSensorValueJson(data.pm25))
+                        add("temperature", createSensorValueJson(data.temperature))
+                        add("voc", createSensorValueJson(data.voc))
+                        // timestamp를 제거하거나 동일한 형식으로 변경
+                    }
+
                     val message = JsonObject().apply {
                         addProperty("type", "SENSOR_DATA")
                         add("payload", JsonObject().apply {
                             addProperty("deviceId", deviceId)
-                            addProperty("projectId", settings.projectId.toLong())  // projectId 추가
-                            addProperty("timestamp", Instant.now().toString())
-                            add("data", Gson().toJsonTree(data))
+                            addProperty("projectId", settings.projectId.toLong())
+                            addProperty("timestamp", timestamp)
+                            add("data", sensorDataJson)
                             location?.let { (lat, lng) ->
                                 addProperty("latitude", lat)
                                 addProperty("longitude", lng)
@@ -116,6 +139,13 @@ class WebSocketManager @Inject constructor(
             }
         } else {
             println("WebSocketManager: Cannot send data - not connected")
+        }
+    }
+
+    private fun createSensorValueJson(sensorValue: SensorLogData.SensorValue): JsonObject {
+        return JsonObject().apply {
+            addProperty("value", sensorValue.value)
+            addProperty("level", sensorValue.level)
         }
     }
 

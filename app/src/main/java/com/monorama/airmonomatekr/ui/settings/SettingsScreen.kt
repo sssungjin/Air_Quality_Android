@@ -1,9 +1,7 @@
 package com.monorama.airmonomatekr.ui.settings
 
-import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
-import android.provider.Settings
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.material3.*
@@ -16,6 +14,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.data.model.UserSettings
 import com.monorama.airmonomatekr.ui.settings.components.DeviceLocationDialog
+import com.monorama.airmonomatekr.util.Constants
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -165,10 +164,27 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Device Location Button
+//        // Device Location Button
+//        Button(
+//            onClick = { showLocationDialog = true },
+//            modifier = Modifier.fillMaxWidth()
+//        ) {
+//            Text("Edit Device Location")
+//        }
+
+        // Device Location Button - Modified to open web link
         Button(
-            onClick = { showLocationDialog = true },
-            modifier = Modifier.fillMaxWidth()
+            onClick = {
+                val url = buildString {
+                    append(Constants.WebUrl.WEB_URL)
+                    append("/device-info")
+                    append("?deviceId=$deviceId")
+                }
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = deviceId != null
         ) {
             Text("Edit Device Location")
         }
@@ -180,7 +196,8 @@ fun SettingsScreen(
             onClick = {
                 val projectId = deviceInfo?.projectId ?: return@Button
                 val url = buildString {
-                    append("https://air.monomate.kr/info")
+                    append(
+                        Constants.WebUrl.WEB_URL + "/info")
                     append("?deviceId=$deviceId")
                     append("&projectId=$projectId")
                 }

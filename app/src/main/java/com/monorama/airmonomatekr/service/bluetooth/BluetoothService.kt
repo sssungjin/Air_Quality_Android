@@ -1,9 +1,14 @@
 package com.monorama.airmonomatekr.service.bluetooth
 
+import android.annotation.SuppressLint
 import android.app.*
+import android.bluetooth.BluetoothManager
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.IBinder
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import com.monorama.airmonomatekr.MainActivity
 import com.monorama.airmonomatekr.R
@@ -68,8 +73,45 @@ class BluetoothService : Service() {
     }
 
     private fun stopForegroundService() {
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
+        try {
+            // 1. BLE 연결 해제 재확인
+            bleManager.disconnect()
+
+            // 2. 웹소켓 연결 해제
+            webSocketManager.disconnect()
+
+            // 3. 서비스 상태 초기화
+            _isConnected.value = false
+
+            // 4. 블루투스 어댑터 재설정 시도
+            val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ActivityCompat.checkSelfPermission(
+                        this,
+                        android.Manifest.permission.BLUETOOTH_CONNECT
+                    ) == PackageManager.PERMISSION_GRANTED
+                ) {
+                    bluetoothManager.adapter?.cancelDiscovery()
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                bluetoothManager.adapter?.cancelDiscovery()
+            }
+
+            // 5. 포그라운드 서비스 중지
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+            } else {
+                @Suppress("DEPRECATION")
+                stopForeground(true)
+            }
+
+            // 6. 서비스 자체를 중지
+            stopSelf()
+        } catch (e: Exception) {
+            println("BluetoothService: Error stopping service: ${e.message}")
+            e.printStackTrace()
+        }
     }
 
     private fun connectDevice(address: String) {
@@ -91,9 +133,24 @@ class BluetoothService : Service() {
 
     private fun disconnectDevice() {
         serviceScope.launch {
-            bleManager.disconnect()
-            _isConnected.value = false
-            updateNotification()
+            try {
+                println("BluetoothService: Starting device disconnection...")
+
+                // BLE 연결 해제
+                bleManager.disconnect()
+
+                // 서비스 상태 초기화
+                _isConnected.value = false
+
+                // 포그라운드 서비스도 중지
+                stopForegroundService()
+
+                println("BluetoothService: Device disconnection completed")
+            } catch (e: Exception) {
+                println("BluetoothService: Error during device disconnection: ${e.message}")
+                _isConnected.value = false
+                e.printStackTrace()
+            }
         }
     }
 
