@@ -29,6 +29,7 @@ import android.provider.Settings
 import com.monorama.airmonomatekr.util.WorkerScheduler
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
 import java.util.*
 import javax.inject.Inject
 
@@ -48,6 +49,7 @@ class BleManager @Inject constructor(
 
     private var isRealTimeMode = true
     private var currentProjectId: Long? = null
+    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
 
 
     private var bluetoothGatt: BluetoothGatt? = null
@@ -319,6 +321,7 @@ class BleManager @Inject constructor(
         if (value.size < 18) return
 
         try {
+            val currentTime = System.currentTimeMillis()
             val data = SensorLogData(
                 pm25 = SensorLogData.SensorValue(
                     value = ((value[0].toInt() and 0xFF) shl 8 or (value[1].toInt() and 0xFF)).toFloat(),
@@ -343,7 +346,9 @@ class BleManager @Inject constructor(
                 voc = SensorLogData.SensorValue(
                     value = ((value[15].toInt() and 0xFF) shl 8 or (value[16].toInt() and 0xFF)).toFloat(),
                     level = value[17].toInt() and 0xFF
-                )
+                ),
+                timestamp = currentTime,
+                timestampStr = timestampFormat.format(Date(currentTime))
             )
             _sensorLogData.value = data
 

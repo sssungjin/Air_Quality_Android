@@ -17,6 +17,7 @@
  import retrofit2.http.POST
  import retrofit2.http.PUT
  import retrofit2.http.Path
+ import retrofit2.http.Query
 
  interface ApiService {
      @POST("devices/search")
@@ -49,7 +50,16 @@
 //         @Body logs: List<SensorDataLogDto>
 //     ): LogUploadResponse
 
-     @POST("sensor-data/batch")  // 엔드포인트도 서버와 일치하도록 수정
+     @POST("sensor-data/batch")
      @Headers("Content-Type: application/json")
      suspend fun uploadSensorLogs(@Body payload: RequestBody): LogUploadResponse
+
+     @GET("sensor-data/history/{deviceId}")
+     suspend fun getDeviceSensorHistory(
+         @Path("deviceId") deviceId: String,
+         @Query("startDate") startDate: String?,
+         @Query("endDate") endDate: String?,
+         @Query("page") page: Int,
+         @Query("size") size: Int
+     ): ApiResponse
  }

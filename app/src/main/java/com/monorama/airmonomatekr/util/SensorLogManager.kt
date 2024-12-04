@@ -29,11 +29,13 @@ class SensorLogManager @Inject constructor(
 ) {
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
     // ISO 8601 형식 포매터 설정
-    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+    //private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
     // 시간대 설정 주석 처리
     // .apply {
     //     timeZone = TimeZone.getTimeZone("Asia/Seoul")
     // }
+    private val timestampFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US)
+
     private val logFolder = File(context.filesDir, "sensor_logs")
 
     init {
@@ -50,7 +52,7 @@ class SensorLogManager @Inject constructor(
                     "temperature,temperatureLevel,humidity,humidityLevel,co2Value,co2Level,vocValue,vocLevel,latitude,longitude\n")
         }
 
-        val formattedTimestamp = timestampFormat.format(Date(sensorData.timestamp))
+        //val formattedTimestamp = timestampFormat.format(Date(sensorData.timestamp))
 
         // 위도, 경도 정보 가져오기
         val location = locationManager.getCurrentLocation()
@@ -58,7 +60,7 @@ class SensorLogManager @Inject constructor(
         val longitude = location?.second ?: 0.0
 
         // 데이터 작성 (위도, 경도 추가)
-        logFile.appendText("${formattedTimestamp},${deviceId},${projectId}," +
+        logFile.appendText("${timestampFormat.format(Date(sensorData.timestamp))},${deviceId},${projectId}," +
                 "${sensorData.pm25.value},${sensorData.pm25.level}," +
                 "${sensorData.pm10.value},${sensorData.pm10.level}," +
                 "${sensorData.temperature.value},${sensorData.temperature.level}," +

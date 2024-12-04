@@ -1,6 +1,7 @@
 package com.monorama.airmonomatekr.ui.logs
 
 import android.content.Context
+import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.monorama.airmonomatekr.data.model.DateRange
@@ -38,33 +39,40 @@ class LogsViewModel @Inject constructor(
     private val _totalPages = MutableStateFlow(0)
     val totalPages: StateFlow<Int> = _totalPages.asStateFlow()
 
+    private var selectedDate: LocalDate? = null
+    private val pageSize = 20
+
     fun setPage(page: Int) {
         viewModelScope.launch {
             _currentPage.value = page
+            selectedDate?.let { fetchLogs(it, page) }
         }
     }
 
-    fun fetchLogs(date: LocalDate) {
+    private fun getDeviceId(): String {
+        return Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ANDROID_ID
+        )
+    }
+
+    fun fetchLogs(date: LocalDate, page: Int = 0) {
         viewModelScope.launch {
             _isLoading.value = true
+            selectedDate = date
             try {
-                println("LogsViewModel: Fetching logs for date: $date")
+                val startDateTime = date.atStartOfDay()
+                val endDateTime = date.atTime(23, 59, 59)
 
-                val request = SearchRequest(
-                    location = Location(),
-                    dateRange = DateRange(
-                        startDate = date.toString(),
-                        endDate = date.toString()
-                    ),
-                    apiKey = Constants.API_KEY
+                val response = apiService.getDeviceSensorHistory(
+                    deviceId = getDeviceId(),
+                    startDate = startDateTime.toString(),
+                    endDate = endDateTime.toString(),
+                    page = page,
+                    size = pageSize
                 )
 
-                val requestJson = Gson().toJson(request)
-                println("LogsViewModel: Request body: $requestJson")
-
-                val response = apiService.searchDevices(request)
-                println("LogsViewModel: Received response: $response")
-
+                // content[1]이 실제 데이터 리스트를 포함하고 있다고 가정
                 val dataList = (response.content[1] as? List<*>)?.filterIsInstance<Map<*, *>>()
 
                 _logs.value = dataList?.mapNotNull { map ->
@@ -94,6 +102,7 @@ class LogsViewModel @Inject constructor(
                                 value = (map["vocValue"] as? Double)?.toFloat() ?: 0f,
                                 level = (map["vocLevel"] as? Double)?.toInt() ?: 0
                             ),
+                            timestampStr = map["timestamp"] as String,
                             timestamp = LocalDateTime.parse(map["timestamp"] as String)
                                 .toInstant(ZoneOffset.UTC)
                                 .toEpochMilli()
@@ -103,14 +112,15 @@ class LogsViewModel @Inject constructor(
                         null
                     }
                 } ?: emptyList()
-                
-                println("LogsViewModel: Converted to ${_logs.value.size} SensorLogData items")
-                
-                _totalPages.value = (_logs.value.size + 9) / 10
-                _currentPage.value = 0
+
+                _totalPages.value = if (response.totalPages > 0) response.totalPages else 1
+                _currentPage.value = response.number.coerceIn(0, _totalPages.value - 1)
             } catch (e: Exception) {
                 println("LogsViewModel: Error fetching logs - ${e.message}")
                 e.printStackTrace()
+                _logs.value = emptyList()
+                _totalPages.value = 1
+                _currentPage.value = 0
             } finally {
                 _isLoading.value = false
             }
