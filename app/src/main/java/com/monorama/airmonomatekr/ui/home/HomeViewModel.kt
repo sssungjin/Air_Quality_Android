@@ -9,6 +9,7 @@ import android.location.LocationManager
 import androidx.core.app.ActivityCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.monorama.airmonomatekr.network.websocket.WebSocketManager
 import com.monorama.airmonomatekr.service.bluetooth.BleManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -21,6 +22,7 @@ import javax.inject.Inject
 @HiltViewModel
 class HomeViewModel @Inject constructor(
     private val bleManager: BleManager,
+    private val webSocketManager: WebSocketManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     private val _isScanning = MutableStateFlow(false)
@@ -106,8 +108,11 @@ class HomeViewModel @Inject constructor(
                 // 1. 스캔 중지
                 stopScan()
 
-                // 2. BLE 연결 해제
+                // 2.1. BLE 연결 해제
                 bleManager.disconnect()
+
+                // 2.2. 웹소켓 연결 해제
+                webSocketManager.disconnect()
 
                 // 3. 상태 초기화
                 _isConnected.value = false

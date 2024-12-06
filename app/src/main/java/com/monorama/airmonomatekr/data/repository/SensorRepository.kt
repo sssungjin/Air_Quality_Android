@@ -26,15 +26,15 @@ class SensorRepository @Inject constructor(
         }
     }
 
-    fun disconnect() {
-        bleManager.disconnect()
-    }
-
-    suspend fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
-        bleManager.startScan(onDevicesFound)
-    }
-
-    fun stopScan() {
-        bleManager.stopScan()
-    }
+//    fun disconnect() {
+//        bleManager.disconnect()
+//    }
+//
+//    suspend fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
+//        bleManager.startScan(onDevicesFound)
+//    }
+//
+//    fun stopScan() {
+//        bleManager.stopScan()
+//    }
 }

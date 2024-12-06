@@ -150,8 +150,23 @@ class WebSocketManager @Inject constructor(
     }
 
     fun disconnect() {
+        if (_isConnected.value) {
+            val deviceId = getDeviceId()
+            val unsubscribeMessage = JsonObject().apply {
+                addProperty("type", "UNSUBSCRIBE")
+                add("payload", JsonObject().apply {
+                    addProperty("topic", "device/$deviceId")
+                })
+            }
+            webSocket?.send(unsubscribeMessage.toString())
+            println("WebSocketManager: Sent unsubscribe message: $unsubscribeMessage")
+        }
+
+        // Close WebSocket connection
         webSocket?.close(1000, "Normal closure")
         webSocket = null
         _isConnected.value = false
+        println("WebSocketManager: Disconnected Successfully")
     }
+
 }
