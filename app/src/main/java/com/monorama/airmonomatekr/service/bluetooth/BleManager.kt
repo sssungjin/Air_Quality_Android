@@ -177,10 +177,11 @@ class BleManager @Inject constructor(
                         }
                     } else {
                         // SDK 28용 레거시 방식
+                        //println("BleManager: Reading characteristic (legacy)...")
                         gatt.readCharacteristic(characteristic)
                     }
 
-                    delay(5000) // 5초 대기
+                    delay(5000) // 1초 대기
                 } catch (e: Exception) {
                     println("BleManager: Error reading data: ${e.message}")
                     e.printStackTrace()
@@ -200,15 +201,20 @@ class BleManager @Inject constructor(
                     bluetoothGatt = gatt
                     gattInstances.add(gatt)
 
-                    // 서비스 디스커버리 시작
+                    // 서비스 디스커버리 시작 전 약간의 지연
                     CoroutineScope(Dispatchers.IO).launch {
                         delay(1000)
-                        try {
-                            val success = gatt.discoverServices()
-                            println("BleManager: Service discovery initiated: $success")
-                        } catch (e: Exception) {
-                            println("BleManager: Error starting service discovery: ${e.message}")
-                            disconnect()
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            if (ActivityCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.BLUETOOTH_CONNECT
+                                ) == PackageManager.PERMISSION_GRANTED
+                            ) {
+                                gatt.discoverServices()
+                            }
+                        } else {
+                            @Suppress("DEPRECATION")
+                            gatt.discoverServices()
                         }
                     }
                 }
@@ -217,12 +223,6 @@ class BleManager @Inject constructor(
                     dataCollectionJob?.cancel()
                     closeGatt(gatt)
                     _sensorLogData.value = null
-                }
-                BluetoothProfile.STATE_CONNECTING -> {
-                    println("BleManager: Connecting to GATT server...")
-                }
-                BluetoothProfile.STATE_DISCONNECTING -> {
-                    println("BleManager: Disconnecting from GATT server...")
                 }
             }
         }
