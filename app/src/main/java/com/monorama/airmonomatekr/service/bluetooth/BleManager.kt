@@ -177,11 +177,10 @@ class BleManager @Inject constructor(
                         }
                     } else {
                         // SDK 28용 레거시 방식
-                        //println("BleManager: Reading characteristic (legacy)...")
                         gatt.readCharacteristic(characteristic)
                     }
 
-                    delay(5000) // 1초 대기
+                    delay(5000) // 5초 대기
                 } catch (e: Exception) {
                     println("BleManager: Error reading data: ${e.message}")
                     e.printStackTrace()
@@ -201,20 +200,15 @@ class BleManager @Inject constructor(
                     bluetoothGatt = gatt
                     gattInstances.add(gatt)
 
-                    // 서비스 디스커버리 시작 전 약간의 지연
+                    // 서비스 디스커버리 시작
                     CoroutineScope(Dispatchers.IO).launch {
                         delay(1000)
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            if (ActivityCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.BLUETOOTH_CONNECT
-                                ) == PackageManager.PERMISSION_GRANTED
-                            ) {
-                                gatt.discoverServices()
-                            }
-                        } else {
-                            @Suppress("DEPRECATION")
-                            gatt.discoverServices()
+                        try {
+                            val success = gatt.discoverServices()
+                            println("BleManager: Service discovery initiated: $success")
+                        } catch (e: Exception) {
+                            println("BleManager: Error starting service discovery: ${e.message}")
+                            disconnect()
                         }
                     }
                 }
@@ -223,6 +217,12 @@ class BleManager @Inject constructor(
                     dataCollectionJob?.cancel()
                     closeGatt(gatt)
                     _sensorLogData.value = null
+                }
+                BluetoothProfile.STATE_CONNECTING -> {
+                    println("BleManager: Connecting to GATT server...")
+                }
+                BluetoothProfile.STATE_DISCONNECTING -> {
+                    println("BleManager: Disconnecting from GATT server...")
                 }
             }
         }
@@ -359,42 +359,58 @@ class BleManager @Inject constructor(
     fun startScan(onDevicesFound: (List<BluetoothDevice>) -> Unit) {
         println("BleManager: Starting scan...")
 
-        // Android 12 (API 31) 이상
-        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.BLUETOOTH_SCAN
-            ) == PackageManager.PERMISSION_GRANTED &&
-                    ActivityCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.BLUETOOTH_CONNECT
-                    ) == PackageManager.PERMISSION_GRANTED
-        }
-        // Android 11 이하 (API 30 이하)
-        else {
-            ActivityCompat.checkSelfPermission(
-                context,
-                Manifest.permission.ACCESS_FINE_LOCATION
-            ) == PackageManager.PERMISSION_GRANTED
-        }
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val bluetoothAdapter = bluetoothManager?.adapter
 
-        if (!hasPermission) {
-            println("BleManager: Required permission not granted")
+        if (bluetoothAdapter == null) {
+            println("BleManager: Bluetooth adapter not available")
             return
         }
 
-        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
-        if (!bluetoothManager.adapter?.isEnabled!!) {
+        // Bluetooth가 활성화되어 있는지 확인
+        if (!bluetoothAdapter.isEnabled) {
             println("BleManager: Bluetooth is not enabled")
+            return
+        }
+
+        // 권한 체크
+        val hasPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN) ==
+                    PackageManager.PERMISSION_GRANTED &&
+                    ActivityCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) ==
+                    PackageManager.PERMISSION_GRANTED
+        } else {
+            ActivityCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED
+        }
+
+        if (!hasPermission) {
+            println("BleManager: Required Bluetooth permissions not granted")
             return
         }
 
         discoveredDevices.clear()
         currentScanCallback = onDevicesFound
 
+        // 페어링된 기기 먼저 추가
+        bluetoothAdapter.bondedDevices?.forEach { device ->
+            if (device.name == DEVICE_NAME) {
+                discoveredDevices.add(device)
+                currentScanCallback?.invoke(discoveredDevices.toList())
+            }
+        }
+
+        // BluetoothLeScanner를 사용하여 스캔 시작
+        val bluetoothLeScanner = bluetoothAdapter.bluetoothLeScanner
         try {
-            bluetoothLeScanner?.startScan(listOf(scanFilter), scanSettings, scanCallback)
+            bluetoothLeScanner?.startScan(
+                listOf(scanFilter),
+                scanSettings,
+                scanCallback
+            )
             println("BleManager: Scan started successfully")
+        } catch (e: SecurityException) {
+            println("BleManager: Security exception during scan: ${e.message}")
         } catch (e: Exception) {
             println("BleManager: Failed to start scan: ${e.message}")
             e.printStackTrace()
@@ -416,9 +432,10 @@ class BleManager @Inject constructor(
     fun connect(deviceAddress: String): Boolean {
         println("BleManager: Attempting to connect to device: $deviceAddress")
 
+        // 기존 연결이 있으면 해제
         if (bluetoothGatt != null) {
             println("BleManager: Already connected to a device")
-            return false
+            disconnect()
         }
 
         bluetoothAdapter?.let { adapter ->
@@ -426,32 +443,39 @@ class BleManager @Inject constructor(
                 val device = adapter.getRemoteDevice(deviceAddress)
 
                 // SDK 버전별 연결 처리
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    // Android 12 이상
                     if (ActivityCompat.checkSelfPermission(
                             context,
                             Manifest.permission.BLUETOOTH_CONNECT
                         ) == PackageManager.PERMISSION_GRANTED) {
                         bluetoothGatt = device.connectGatt(
                             context,
-                            false,
+                            false,  // autoConnect false로 설정
                             gattCallback,
                             BluetoothDevice.TRANSPORT_LE
                         )
+                        println("BleManager: High SDK - Connection attempt result: ${bluetoothGatt != null}")
+                        bluetoothGatt != null
+                    } else {
+                        println("BleManager: Bluetooth connect permission not granted")
+                        false
                     }
                 } else {
-                    // SDK 28 이하에서는 autoConnect를 true로 설정하고 TRANSPORT_LE 파라미터 제외
+                    // Android 11 이하
                     @Suppress("DEPRECATION")
                     bluetoothGatt = device.connectGatt(
                         context,
                         true,  // autoConnect를 true로 설정
                         gattCallback
                     )
+                    println("BleManager: Low SDK - Connection attempt result: ${bluetoothGatt != null}")
+                    bluetoothGatt != null
                 }
-
-                return bluetoothGatt != null
             } catch (e: Exception) {
                 println("BleManager: Connection error: ${e.message}")
                 e.printStackTrace()
+                disconnect()
             }
         }
         return false
