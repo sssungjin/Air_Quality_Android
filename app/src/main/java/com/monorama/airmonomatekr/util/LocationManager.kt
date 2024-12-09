@@ -54,9 +54,8 @@ class LocationManager @Inject constructor(
                 return@suspendCancellableCoroutine
             }
 
-            // SDK 버전별 위치 정보 요청
+            // Fused Location Provider 사용 (Android 10 이상)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Fused Location Provider 사용 (Android 10 이상)
                 val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000L)
                     .setWaitForAccurateLocation(false)
                     .setMinUpdateIntervalMillis(2000L)
