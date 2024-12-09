@@ -198,10 +198,10 @@ class BleManager @Inject constructor(
             when (newState) {
                 BluetoothProfile.STATE_CONNECTED -> {
                     println("BleManager: Successfully connected to GATT server")
-                    // 연결된 GATT 인스턴스 저장
                     bluetoothGatt = gatt
                     gattInstances.add(gatt)
 
+                    // 서비스 디스커버리 시작 전 약간의 지연
                     CoroutineScope(Dispatchers.IO).launch {
                         delay(1000)
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -210,17 +210,11 @@ class BleManager @Inject constructor(
                                     Manifest.permission.BLUETOOTH_CONNECT
                                 ) == PackageManager.PERMISSION_GRANTED
                             ) {
-                                println("BleManager: Starting service discovery")
-                                if (!gatt.discoverServices()) {
-                                    println("BleManager: Failed to start service discovery")
-                                    disconnect()
-                                }
+                                gatt.discoverServices()
                             }
                         } else {
-                            if (!gatt.discoverServices()) {
-                                println("BleManager: Failed to start service discovery")
-                                disconnect()
-                            }
+                            @Suppress("DEPRECATION")
+                            gatt.discoverServices()
                         }
                     }
                 }
@@ -422,7 +416,6 @@ class BleManager @Inject constructor(
     fun connect(deviceAddress: String): Boolean {
         println("BleManager: Attempting to connect to device: $deviceAddress")
 
-        // 이미 연결된 GATT가 있으면 연결 시도하지 않음
         if (bluetoothGatt != null) {
             println("BleManager: Already connected to a device")
             return false
@@ -431,23 +424,34 @@ class BleManager @Inject constructor(
         bluetoothAdapter?.let { adapter ->
             try {
                 val device = adapter.getRemoteDevice(deviceAddress)
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
-                    ActivityCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.BLUETOOTH_CONNECT
-                    ) == PackageManager.PERMISSION_GRANTED
-                ) {
-                    println("BleManager: Creating GATT connection")
+                
+                // SDK 버전별 연결 처리
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ActivityCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.BLUETOOTH_CONNECT
+                        ) == PackageManager.PERMISSION_GRANTED) {
+                        bluetoothGatt = device.connectGatt(
+                            context,
+                            false,
+                            gattCallback,
+                            BluetoothDevice.TRANSPORT_LE
+                        )
+                    }
+                } else {
+                    // SDK 28 이하에서는 autoConnect를 true로 설정하고 TRANSPORT_LE 파라미터 제외
+                    @Suppress("DEPRECATION")
                     bluetoothGatt = device.connectGatt(
                         context,
-                        false,
-                        gattCallback,
-                        BluetoothDevice.TRANSPORT_LE
+                        true,  // autoConnect를 true로 설정
+                        gattCallback
                     )
-                    return true
                 }
+
+                return bluetoothGatt != null
             } catch (e: Exception) {
                 println("BleManager: Connection error: ${e.message}")
+                e.printStackTrace()
             }
         }
         return false
