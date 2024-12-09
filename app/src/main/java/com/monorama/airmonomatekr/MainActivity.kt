@@ -84,19 +84,19 @@ class MainActivity : ComponentActivity() {
                         NavigationBar {
                             NavigationBarItem(
                                 icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
-                                label = { Text("Real-time") },
+                                label = { Text("Home") },
                                 selected = currentRoute == Screen.Home.route,
                                 onClick = { navController.navigate(Screen.Home.route) }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Filled.List, contentDescription = "Logs") },
-                                label = { Text("Logs") },
+                                label = { Text("Log") },
                                 selected = currentRoute == Screen.Logs.route,
                                 onClick = { navController.navigate(Screen.Logs.route) }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
-                                label = { Text("Settings") },
+                                label = { Text("Setting") },
                                 selected = currentRoute == Screen.Settings.route,
                                 onClick = { navController.navigate(Screen.Settings.route) }
                             )

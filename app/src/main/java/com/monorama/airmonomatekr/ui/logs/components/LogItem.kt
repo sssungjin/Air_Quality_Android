@@ -29,7 +29,7 @@ fun LogItem(log: SensorLogData) {
                 .fillMaxWidth()
         ) {
             Text(
-                text = formatTimestamp(log.timestamp),
+                text = log.timestampStr?.replace("T", " ") ?: "",
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.primary
             )

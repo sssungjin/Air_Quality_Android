@@ -7,7 +7,8 @@ data class SensorLogData(
     val humidity: SensorValue,
     val co2: SensorValue,
     val voc: SensorValue,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val timestampStr: String? = null
 ) {
     data class SensorValue(
         val value: Float,

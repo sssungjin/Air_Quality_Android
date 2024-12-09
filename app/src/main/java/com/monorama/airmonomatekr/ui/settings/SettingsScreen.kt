@@ -154,7 +154,7 @@ fun SettingsScreen(
                 Text(
                     text = when (mode) {
                         TransmissionMode.REALTIME -> "Real-time"
-                        TransmissionMode.MINUTE -> "Every Minute"
+                        TransmissionMode.MINUTE -> "Minute"
                         TransmissionMode.DAILY -> "Daily"
                     },
                     modifier = Modifier.padding(start = 8.dp)
@@ -171,57 +171,6 @@ fun SettingsScreen(
 //        ) {
 //            Text("Edit Device Location")
 //        }
-
-        // Device Location Button - Modified to open web link
-        Button(
-            onClick = {
-                val url = buildString {
-                    append(Constants.WebUrl.WEB_URL)
-                    append("/device-info")
-                    append("?deviceId=$deviceId")
-                }
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = deviceId != null
-        ) {
-            Text("Edit Device Location")
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Project Info Button
-        Button(
-            onClick = {
-                val projectId = deviceInfo?.projectId ?: return@Button
-                val url = buildString {
-                    append(
-                        Constants.WebUrl.WEB_URL + "/info")
-                    append("?deviceId=$deviceId")
-                    append("&projectId=$projectId")
-                }
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                context.startActivity(intent)
-            },
-            modifier = Modifier.fillMaxWidth(),
-            enabled = deviceInfo?.projectId != null
-        ) {
-            Text("Visit Project Info Page")
-        }
-
-        // Location Dialog
-        if (showLocationDialog) {
-            DeviceLocationDialog(
-                currentLocation = deviceLocation,
-                isLoading = isLoading,
-                onDismiss = { showLocationDialog = false },
-                onConfirm = { location ->
-                    viewModel.updateDeviceLocation(location)
-                    showLocationDialog = false
-                }
-            )
-        }
 
         Spacer(modifier = Modifier.weight(1f))
 
@@ -264,5 +213,60 @@ fun SettingsScreen(
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Device Location Button - Modified to open web link
+        Button(
+            onClick = {
+                val url = buildString {
+                    append(Constants.WebUrl.WEB_URL)
+                    append("/device-info")
+                    append("?deviceId=$deviceId")
+                }
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = deviceId != null
+        ) {
+            Text("Visit&Edit Device Info Page")
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Project Info Button
+        Button(
+            onClick = {
+                val projectId = deviceInfo?.projectId ?: return@Button
+                val url = buildString {
+                    append(
+                        Constants.WebUrl.WEB_URL + "/info")
+                    append("?deviceId=$deviceId")
+                    append("&projectId=$projectId")
+                }
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                context.startActivity(intent)
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = deviceInfo?.projectId != null
+        ) {
+            Text("Visit&Edit Project Info Page")
+        }
+
+        // Location Dialog
+        if (showLocationDialog) {
+            DeviceLocationDialog(
+                currentLocation = deviceLocation,
+                isLoading = isLoading,
+                onDismiss = { showLocationDialog = false },
+                onConfirm = { location ->
+                    viewModel.updateDeviceLocation(location)
+                    showLocationDialog = false
+                }
+            )
+        }
+
+
     }
 }
