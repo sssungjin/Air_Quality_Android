@@ -39,6 +39,9 @@ import com.monorama.airmonomatekr.ui.logs.LogsScreen
 import com.monorama.airmonomatekr.ui.navigation.Screen
 import com.monorama.airmonomatekr.ui.settings.SettingsScreen
 import com.monorama.airmonomatekr.ui.theme.AirmonomatekrTheme
+import com.monorama.airmonomatekr.ui.login.LoginScreen
+import com.monorama.airmonomatekr.ui.register.RegisterScreen
+import com.monorama.airmonomatekr.util.TokenManager
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -46,6 +49,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<Array<String>>
     private lateinit var bluetoothEnableLauncher: ActivityResultLauncher<Intent>
     private var showBluetoothDialog by mutableStateOf(false)
+    private val tokenManager by lazy { TokenManager(this) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,9 +109,11 @@ class MainActivity : ComponentActivity() {
                 ) { innerPadding ->
                     NavHost(
                         navController = navController,
-                        startDestination = Screen.Home.route,
+                        startDestination = Screen.Login.route,
                         modifier = Modifier.padding(innerPadding)
                     ) {
+                        composable(Screen.Login.route) { LoginScreen(navController) }
+                        composable(Screen.Register.route) { RegisterScreen(navController) }
                         composable(Screen.Home.route) {
                             HomeScreen(
                                 onBluetoothPermissionNeeded = { checkAndRequestBluetoothPermissions() },
@@ -115,7 +121,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                         composable(Screen.Logs.route) { LogsScreen() }
-                        composable(Screen.Settings.route) { SettingsScreen() }
+                        composable(Screen.Settings.route) { SettingsScreen(navController, tokenManager) }
                     }
                 }
             }

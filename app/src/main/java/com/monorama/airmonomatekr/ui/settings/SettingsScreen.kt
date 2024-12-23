@@ -13,14 +13,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.navigation.NavController
 import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.data.model.UserSettings
 import com.monorama.airmonomatekr.ui.settings.components.DeviceLocationDialog
 import com.monorama.airmonomatekr.util.Constants
+import com.monorama.airmonomatekr.util.TokenManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
+    navController: NavController,
+    tokenManager: TokenManager,
     viewModel: SettingsViewModel = hiltViewModel()
 ) {
     var isEditing by remember { mutableStateOf(false) }
@@ -251,6 +255,17 @@ fun SettingsScreen(
                     showLocationDialog = false
                 }
             )
+        }
+
+        // 로그아웃 버튼 추가
+        Button(
+            onClick = {
+                tokenManager.clearToken() // 토큰 제거
+                navController.navigate("login") // 로그인 화면으로 이동
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Logout")
         }
     }
 }

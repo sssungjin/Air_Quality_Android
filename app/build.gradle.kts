@@ -97,4 +97,7 @@ dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.jackson.kotlin)
 
+    //Validation
+    implementation(libs.jakarta.validation)
+
 }
