@@ -15,6 +15,7 @@ import com.monorama.airmonomatekr.network.api.dto.DeviceLocationRequest
 import com.monorama.airmonomatekr.network.api.dto.DeviceLocationResponse
 import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationRequest
 import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
+import com.monorama.airmonomatekr.util.WorkerScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +28,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val apiService: ApiService,
+    private val workerScheduler: WorkerScheduler,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     @SuppressLint("HardwareIds")
@@ -74,7 +76,8 @@ class SettingsViewModel @Inject constructor(
                         projectId = response.projectId?.toString() ?: "",
                         userName = response.userName,
                         email = response.userEmail,
-                        transmissionMode = response.transmissionMode
+                        transmissionMode = response.transmissionMode,
+                        uploadInterval = response.uploadInterval // 기본값 설정
                     )
                 )
                 println("Device info loaded: $response")
@@ -125,7 +128,8 @@ class SettingsViewModel @Inject constructor(
     fun saveSettings(
         userName: String,
         email: String,
-        transmissionMode: TransmissionMode
+        transmissionMode: TransmissionMode,
+        minuteInterval: Int
     ) {
         viewModelScope.launch {
             try {
@@ -136,7 +140,8 @@ class SettingsViewModel @Inject constructor(
                         projectId = projectId,
                         userName = userName,
                         userEmail = email,
-                        transmissionMode = transmissionMode
+                        transmissionMode = transmissionMode,
+                        uploadInterval = minuteInterval
                     )
 
                     val response = apiService.registerDevice(deviceId, request)
@@ -152,6 +157,8 @@ class SettingsViewModel @Inject constructor(
                                 transmissionMode = transmissionMode
                             )
                         )
+                        // 스케줄러에 분 단위 설정
+                        workerScheduler.scheduleSensorDataWork(transmissionMode, minuteInterval)
                         // 화면 갱신을 위해 디바이스 정보 다시 로드
                         loadDeviceInfo()
                     }

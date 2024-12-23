@@ -9,5 +9,6 @@ data class DeviceResponseDto(
     val userEmail: String,
     val projectId: Long?,
     val location: DeviceLocation? = null,
-    val transmissionMode: TransmissionMode
+    val transmissionMode: TransmissionMode,
+    val uploadInterval: Int
 )

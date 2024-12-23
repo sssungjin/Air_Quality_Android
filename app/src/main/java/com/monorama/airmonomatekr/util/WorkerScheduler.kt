@@ -24,7 +24,7 @@ class WorkerScheduler @Inject constructor(
 ) {
     private val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-    fun scheduleSensorDataWork(mode: TransmissionMode) {
+    fun scheduleSensorDataWork(mode: TransmissionMode, minuteInterval: Int) {
         when (mode) {
             TransmissionMode.MINUTE -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -52,7 +52,7 @@ class WorkerScheduler @Inject constructor(
                 AlarmManagerCompat.setExactAndAllowWhileIdle(
                     alarmManager,
                     AlarmManager.RTC_WAKEUP,
-                    System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(Constants.Alarm.MINUTE_INTERVAL),
+                    System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(minuteInterval.toLong()),
                     pendingIntent
                 )
             }

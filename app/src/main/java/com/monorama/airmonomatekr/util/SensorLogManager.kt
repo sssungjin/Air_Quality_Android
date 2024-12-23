@@ -38,11 +38,19 @@ class SensorLogManager @Inject constructor(
 
     private val logFolder = File(context.filesDir, "sensor_logs")
 
+    private var lastWriteTime: Long = 0
+    private val WRITE_INTERVAL = Constants.UploadInterval.SECOND // 10초
+
     init {
         logFolder.mkdirs()
     }
 
     suspend fun writeLog(sensorData: SensorLogData, deviceId: String, projectId: Long) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastWriteTime < WRITE_INTERVAL) {
+            return // 10초가 지나지 않았으면 저장하지 않음
+        }
+
         val today = dateFormat.format(Date())
         val logFile = File(logFolder, "${today}_${deviceId}.csv")
 
@@ -68,6 +76,8 @@ class SensorLogManager @Inject constructor(
                 "${sensorData.co2.value},${sensorData.co2.level}," +
                 "${sensorData.voc.value},${sensorData.voc.level}," +
                 "$latitude,$longitude\n")
+
+        lastWriteTime = currentTime // 저장 시간 업데이트
     }
 
     private fun convertToJsonFormat(logs: List<SensorDataLogDto>): String {

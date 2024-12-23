@@ -20,4 +20,11 @@ object Constants {
     object WebUrl {
         const val WEB_URL = "https://air.monomate.kr"
     }
+
+    object UploadInterval {
+        const val SECOND = 10000L
+        const val MINUTE = 1
+        const val HOUR = 2
+        const val DAY = 3
+    }
 }

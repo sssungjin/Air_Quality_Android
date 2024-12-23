@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import android.provider.Settings
 import com.monorama.airmonomatekr.util.WorkerScheduler
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.*
@@ -53,6 +54,10 @@ class BleManager @Inject constructor(
     private var bluetoothGatt: BluetoothGatt? = null
     private val gattInstances = LinkedList<BluetoothGatt>()
 
+    private val latestSensorData = MutableStateFlow<SensorLogData?>(null) // 최신 데이터를 저장하는 변수
+
+    private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     init {
         CoroutineScope(Dispatchers.IO).launch {
             settingsDataStore.userSettings.collect { settings ->
@@ -68,7 +73,7 @@ class BleManager @Inject constructor(
                     }
                     TransmissionMode.MINUTE, TransmissionMode.DAILY -> {
                         webSocketManager.disconnect()
-                        workerScheduler.scheduleSensorDataWork(settings.transmissionMode)
+                        workerScheduler.scheduleSensorDataWork(settings.transmissionMode, settings.uploadInterval)
                     }
                 }
             }

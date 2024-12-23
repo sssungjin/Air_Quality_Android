@@ -4,11 +4,13 @@ import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.monorama.airmonomatekr.data.model.TransmissionMode
@@ -47,7 +49,11 @@ fun SettingsScreen(
     var transmissionMode by remember(deviceInfo, userSettings) {
         mutableStateOf(deviceInfo?.transmissionMode ?: userSettings.transmissionMode)
     }
-    var expanded by remember { mutableStateOf(false) }
+    
+    // minuteInterval을 올바르게 설정
+    var minuteInterval by remember(deviceInfo, userSettings) {
+        mutableStateOf(deviceInfo?.uploadInterval?.toString() ?: userSettings.uploadInterval.toString())
+    }
 
     val context = LocalContext.current
 
@@ -59,7 +65,6 @@ fun SettingsScreen(
         viewModel.loadDeviceLocation()  // 화면 진입 시에도 위치 정보 로드
     }
 
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -67,8 +72,8 @@ fun SettingsScreen(
     ) {
         // Project Dropdown
         ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { if (isEditing) expanded = !expanded }
+            expanded = false,
+            onExpandedChange = {}
         ) {
             OutlinedTextField(
                 value = selectedProjectName,
@@ -78,31 +83,13 @@ fun SettingsScreen(
                 label = { Text("Project") },
                 trailingIcon = {
                     if (isEditing) {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = false)
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .menuAnchor()
             )
-
-            if (isEditing && projects.isNotEmpty()) {
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    projects.forEach { project ->
-                        DropdownMenuItem(
-                            text = { Text(project.projectName) },
-                            onClick = {
-                                selectedProjectName = project.projectName
-                                viewModel.setSelectedProjectId(project.projectId)
-                                expanded = false
-                            }
-                        )
-                    }
-                }
-            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -127,28 +114,23 @@ fun SettingsScreen(
             enabled = isEditing
         )
 
-        // Transmission Mode
-        Text(
-            text = "Data Transmission Mode",
-            style = MaterialTheme.typography.titleMedium,
-            modifier = Modifier.padding(top = 16.dp)
-        )
+        Spacer(modifier = Modifier.height(8.dp))
 
+        // Transmission Mode Radio Buttons
+        Text("Transmission Mode", style = MaterialTheme.typography.titleMedium)
         TransmissionMode.values().forEach { mode ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .selectable(
-                        selected = transmissionMode == mode,
-                        enabled = isEditing,
+                        selected = (transmissionMode == mode),
                         onClick = { if (isEditing) transmissionMode = mode }
-                    )
-                    .padding(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    ),
+                verticalAlignment = Alignment.CenterVertically // 아이템 정렬
             ) {
                 RadioButton(
-                    selected = transmissionMode == mode,
-                    onClick = { if (isEditing) transmissionMode = mode },
+                    selected = (transmissionMode == mode),
+                    onClick = null, // `Row`의 `onClick`에서 처리하므로 null
                     enabled = isEditing
                 )
                 Text(
@@ -160,19 +142,22 @@ fun SettingsScreen(
                     modifier = Modifier.padding(start = 8.dp)
                 )
             }
+
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-//        // Device Location Button
-//        Button(
-//            onClick = { showLocationDialog = true },
-//            modifier = Modifier.fillMaxWidth()
-//        ) {
-//            Text("Edit Device Location")
-//        }
+        // 분 단위 입력 필드 추가
+        OutlinedTextField(
+            value = minuteInterval,
+            onValueChange = { minuteInterval = it },
+            label = { Text("Upload Interval (minutes)") },
+            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Number),
+            enabled = isEditing // 편집 가능 상태에서만 활성화
+        )
 
-        Spacer(modifier = Modifier.weight(1f))
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Bottom Buttons
         Row(
@@ -192,7 +177,8 @@ fun SettingsScreen(
                         viewModel.saveSettings(
                             userName = userName,
                             email = email,
-                            transmissionMode = transmissionMode
+                            transmissionMode = transmissionMode,
+                            minuteInterval = minuteInterval.toIntOrNull() ?: 5 // 기본 5분
                         )
                         isEditing = false
                     },
@@ -266,7 +252,5 @@ fun SettingsScreen(
                 }
             )
         }
-
-
     }
 }

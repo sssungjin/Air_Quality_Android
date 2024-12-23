@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.monorama.airmonomatekr.data.local.SettingsDataStore
 import com.monorama.airmonomatekr.data.model.SensorLogData
+import com.monorama.airmonomatekr.util.Constants
 import com.monorama.airmonomatekr.util.LocationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -41,6 +42,9 @@ class WebSocketManager @Inject constructor(
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+
+    private var lastSendTime: Long = 0
+    private val SEND_INTERVAL = Constants.UploadInterval.SECOND // 10초
 
     private fun getDeviceId(): String {
         return Settings.Secure.getString(
@@ -86,6 +90,12 @@ class WebSocketManager @Inject constructor(
     }
 
     fun sendSensorData(data: SensorLogData) {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastSendTime < SEND_INTERVAL) {
+            println("WebSocketManager: Cannot send data - interval not reached")
+            return // 10초가 지나지 않았으면 전송하지 않음
+        }
+
         if (_isConnected.value) {
             coroutineScope.launch {
                 try {
@@ -133,6 +143,7 @@ class WebSocketManager @Inject constructor(
                     }
                     webSocket?.send(message.toString())
                     println("WebSocketManager: Sent sensor data: $message")
+                    lastSendTime = currentTime // 전송 시간 업데이트
                 } catch (e: Exception) {
                     println("WebSocketManager: Error sending sensor data: ${e.message}")
                 }

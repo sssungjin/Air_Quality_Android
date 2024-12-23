@@ -8,4 +8,5 @@ data class DeviceRegistrationRequest(
     val userName: String,
     val userEmail: String,
     val transmissionMode: TransmissionMode,
+    val uploadInterval: Int
 )

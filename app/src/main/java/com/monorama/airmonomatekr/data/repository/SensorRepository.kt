@@ -17,14 +17,14 @@ class SensorRepository @Inject constructor(
     private val _sensorLogData = MutableStateFlow<SensorLogData?>(null)
     val sensorLogData: StateFlow<SensorLogData?> = _sensorLogData
 
-    suspend fun connectDevice(deviceAddress: String): Result<Unit> {
-        return try {
-            bleManager.connect(deviceAddress)
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
+//    suspend fun connectDevice(deviceAddress: String): Result<Unit> {
+//        return try {
+//            bleManager.connect(deviceAddress)
+//            Result.success(Unit)
+//        } catch (e: Exception) {
+//            Result.failure(e)
+//        }
+//    }
 
 //    fun disconnect() {
 //        bleManager.disconnect()
