@@ -86,19 +86,32 @@ class MainActivity : ComponentActivity() {
                                 icon = { Icon(Icons.Filled.Home, contentDescription = "Home") },
                                 label = { Text("Home") },
                                 selected = currentRoute == Screen.Home.route,
-                                onClick = { navController.navigate(Screen.Home.route) }
+                                onClick = {
+                                    navController.navigate(Screen.Home.route) {
+                                        // Clear the back stack to avoid multiple instances
+                                        popUpTo(Screen.Home.route) { inclusive = true }
+                                    }
+                                }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Filled.List, contentDescription = "Logs") },
                                 label = { Text("Log") },
                                 selected = currentRoute == Screen.Logs.route,
-                                onClick = { navController.navigate(Screen.Logs.route) }
+                                onClick = {
+                                    navController.navigate(Screen.Logs.route) {
+                                        popUpTo(Screen.Logs.route) { inclusive = true }
+                                    }
+                                }
                             )
                             NavigationBarItem(
                                 icon = { Icon(Icons.Filled.Settings, contentDescription = "Settings") },
                                 label = { Text("Setting") },
                                 selected = currentRoute == Screen.Settings.route,
-                                onClick = { navController.navigate(Screen.Settings.route) }
+                                onClick = {
+                                    navController.navigate(Screen.Settings.route) {
+                                        popUpTo(Screen.Settings.route) { inclusive = true }
+                                    }
+                                }
                             )
                         }
                     }
@@ -111,7 +124,8 @@ class MainActivity : ComponentActivity() {
                         composable(Screen.Home.route) {
                             HomeScreen(
                                 onBluetoothPermissionNeeded = { checkAndRequestBluetoothPermissions() },
-                                onEnableBluetoothRequest = { requestEnableBluetooth() }
+                                onEnableBluetoothRequest = { requestEnableBluetooth() },
+                                navController = navController
                             )
                         }
                         composable(Screen.Logs.route) { LogsScreen() }
@@ -159,7 +173,7 @@ class MainActivity : ComponentActivity() {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                         "블루투스 기기를 검색하고 연결하기 위해 블루투스 권한이 필요합니다."
                     } else {
-                        "블루투스 기기를 검색하고 연결하기 위해 위치 권한이 필요합니다.\n" +
+                        "블루투스 기기를 검색하고 연결하기 위해 위치 권한이 ���요합니다.\n" +
                                 "위치 정보는 블루투스 검색 용도로만 사용됩니다."
                     }
                 )

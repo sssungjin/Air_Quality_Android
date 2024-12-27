@@ -2,6 +2,8 @@ package com.monorama.airmonomatekr.service.bluetooth
 
 import android.annotation.SuppressLint
 import android.app.*
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
@@ -46,9 +48,12 @@ class BluetoothService : Service() {
     private val _isConnected = MutableStateFlow(false)
     val isConnected = _isConnected.asStateFlow()
 
+    private lateinit var bluetoothAdapter: BluetoothAdapter
 
     override fun onCreate() {
         super.onCreate()
+        val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        bluetoothAdapter = bluetoothManager.adapter
         bleManager = BleManager(this, webSocketManager, settingsDataStore, sensorLogManager, workerScheduler)
         createNotificationChannel()
     }
@@ -59,7 +64,8 @@ class BluetoothService : Service() {
             ACTION_STOP_FOREGROUND -> stopForegroundService()
             ACTION_CONNECT -> {
                 intent.getStringExtra(EXTRA_DEVICE_ADDRESS)?.let { address ->
-                    connectDevice(address)
+                    val device = bluetoothAdapter.getRemoteDevice(address)
+                    connectDevice(device)
                 }
             }
             ACTION_DISCONNECT -> disconnectDevice()
@@ -114,7 +120,7 @@ class BluetoothService : Service() {
         }
     }
 
-    private fun connectDevice(address: String) {
+    private fun connectDevice(device: BluetoothDevice) {
         if (!PermissionHelper.hasRequiredPermissions(this)) {
             _isConnected.value = false
             return
@@ -122,7 +128,7 @@ class BluetoothService : Service() {
 
         serviceScope.launch {
             try {
-                val connected = bleManager.connect(address)
+                val connected = bleManager.connect(device)
                 _isConnected.value = connected
                 updateNotification()
             } catch (e: Exception) {

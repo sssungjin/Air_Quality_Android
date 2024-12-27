@@ -41,7 +41,7 @@ class WebSocketManager @Inject constructor(
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val _isConnected = MutableStateFlow(false)
-    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+    val isConnected: StateFlow<Boolean> get() = _isConnected
 
     private var lastSendTime: Long = 0
     private val SEND_INTERVAL = Constants.UploadInterval.SECOND // 10초
