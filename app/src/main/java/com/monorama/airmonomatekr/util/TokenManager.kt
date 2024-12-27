@@ -1,20 +1,37 @@
 package com.monorama.airmonomatekr.util
 
 import android.content.Context
-import android.content.SharedPreferences
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 
-class TokenManager(context: Context) {
-    private val sharedPreferences: SharedPreferences = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+class TokenManager(private val context: Context) {
+    private val Context.dataStore by preferencesDataStore(name = "token_store")
 
-    fun saveToken(token: String) {
-        sharedPreferences.edit().putString("jwt_token", token).apply()
+    private object PreferencesKeys {
+        val TOKEN = stringPreferencesKey("jwt_token")
     }
 
-    fun getToken(): String? {
-        return sharedPreferences.getString("jwt_token", null)
+    val token: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[PreferencesKeys.TOKEN]
     }
 
-    fun clearToken() {
-        sharedPreferences.edit().remove("jwt_token").apply()
+    suspend fun getToken(): String? {
+        return token.first()
+    }
+
+    suspend fun saveToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[PreferencesKeys.TOKEN] = token
+        }
+    }
+
+    suspend fun clearToken() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(PreferencesKeys.TOKEN)
+        }
     }
 }

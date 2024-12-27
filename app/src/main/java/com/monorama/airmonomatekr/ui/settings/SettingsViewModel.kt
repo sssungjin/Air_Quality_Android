@@ -11,24 +11,24 @@ import com.monorama.airmonomatekr.data.model.Project
 import com.monorama.airmonomatekr.data.model.TransmissionMode
 import com.monorama.airmonomatekr.data.model.UserSettings
 import com.monorama.airmonomatekr.network.api.ApiService
-import com.monorama.airmonomatekr.network.api.dto.DeviceLocationRequest
-import com.monorama.airmonomatekr.network.api.dto.DeviceLocationResponse
 import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationRequest
 import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
-import com.monorama.airmonomatekr.util.WorkerScheduler
+import com.monorama.airmonomatekr.network.api.dto.UserResponseDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collect
+import com.monorama.airmonomatekr.util.TokenManager
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val settingsDataStore: SettingsDataStore,
     private val apiService: ApiService,
-    private val workerScheduler: WorkerScheduler,
+    private val tokenManager: TokenManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
     @SuppressLint("HardwareIds")
@@ -45,44 +45,63 @@ class SettingsViewModel @Inject constructor(
     private val _deviceInfo = MutableStateFlow<DeviceResponseDto?>(null)
     val deviceInfo: StateFlow<DeviceResponseDto?> = _deviceInfo.asStateFlow()
 
-    private var selectedProjectId: Long? = null
-
     private val _deviceLocation = MutableStateFlow(DeviceLocation())
     val deviceLocation: StateFlow<DeviceLocation> = _deviceLocation.asStateFlow()
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+    private val _isDeviceRegistered = MutableStateFlow(false)
+    val isDeviceRegistered: StateFlow<Boolean> = _isDeviceRegistered.asStateFlow()
 
     init {
-        loadDeviceInfo()
         loadProjects()
-        loadDeviceLocation()
+        loadDeviceInfo()
+        //loadDeviceLocation()
     }
 
-    private fun loadDeviceInfo() {
+//    fun loadDeviceInfo() {
+//        viewModelScope.launch {
+//            try {
+//                val response = apiService.getDevice(deviceId)
+//                _deviceInfo.value = response
+//                _isDeviceRegistered.value = true
+//
+//                // userId를 가져오기 위해 userSettings를 collect
+//                userSettings.collect { settings ->
+//                    val userId = settings.userId
+//                    loadUserInfo(userId)
+//                }
+//
+//                println("Device info loaded: $response")
+//            } catch (e: Exception) {
+//                if (e.message?.contains("410") == true) {
+//                    _isDeviceRegistered.value = false
+//                    println("Device not registered: ${e.message}")
+//                } else {
+//                    println("Error loading device info: ${e.message}")
+//                }
+//            }
+//        }
+//    }
+
+    private fun loadUserInfo(userId: Long) {
         viewModelScope.launch {
             try {
-                val response = apiService.getDevice(deviceId)
-                _deviceInfo.value = response
-                // 디바이스 정보로 selectedProjectId 초기화
-                selectedProjectId = response.projectId
-
-                // 서버에서 받은 정보로 로컬 설정 업데이트
+                val userResponse: UserResponseDto = apiService.getUserById(userId)
                 settingsDataStore.updateSettings(
                     UserSettings(
-                        projectId = response.projectId?.toString() ?: "",
-                        userName = response.userName,
-                        email = response.userEmail,
-                        transmissionMode = response.transmissionMode,
-                        uploadInterval = response.uploadInterval // 기본값 설정
+                        userId = userResponse.id,
+                        projectId = _deviceInfo.value?.projectId?.toString() ?: "",
+                        userName = userResponse.name,
+                        email = userResponse.email,
+                        transmissionMode = _deviceInfo.value?.transmissionMode ?: TransmissionMode.REALTIME,
+                        uploadInterval = _deviceInfo.value?.uploadInterval ?: 5
                     )
                 )
-                println("Device info loaded: $response")
+                println("User info loaded: ${userResponse.name}, ${userResponse.email}")
             } catch (e: Exception) {
-                println("Error loading device info: ${e.message}")
+                println("Error loading user info: ${e.message}")
             }
         }
     }
@@ -93,7 +112,7 @@ class SettingsViewModel @Inject constructor(
                 val response = apiService.getProjects()
                 println("SettingsViewModel: Received response: $response")
 
-                // projects 배열에서 실제 프로젝트 데이터 추출
+                // projects 배열에서 두 번째 요소를 가져와서 List<Project>로 변환
                 val projectsList = (response.projects[1] as? List<*>)?.filterIsInstance<Map<*, *>>()
 
                 _projects.value = projectsList?.mapNotNull { map ->
@@ -121,103 +140,75 @@ class SettingsViewModel @Inject constructor(
         }
     }
 
-    fun setSelectedProjectId(projectId: Long) {
-        selectedProjectId = projectId
-    }
-
-    fun saveSettings(
-        userName: String,
-        email: String,
-        transmissionMode: TransmissionMode,
-        minuteInterval: Int
-    ) {
+    fun loadDeviceInfo() {
         viewModelScope.launch {
             try {
-                // 서버에 디바이스 정보 등록
-                selectedProjectId?.let { projectId ->
-                    val request = DeviceRegistrationRequest(
-                        deviceId = deviceId,
-                        projectId = projectId,
-                        userName = userName,
-                        userEmail = email,
-                        transmissionMode = transmissionMode,
-                        uploadInterval = minuteInterval
-                    )
+                val response = apiService.getDevice(deviceId)
+                _deviceInfo.value = response
+                _isDeviceRegistered.value = true
 
-                    val response = apiService.registerDevice(deviceId, request)
-                    println("Device registration response: ${response.message}")
-
-                    if (response.success) {
-                        // 성공적으로 서버에 저장되면 로컬 설정도 업데이트
-                        settingsDataStore.updateSettings(
-                            UserSettings(
-                                projectId = projectId.toString(),
-                                userName = userName,
-                                email = email,
-                                transmissionMode = transmissionMode
-                            )
-                        )
-                        // 스케줄러에 분 단위 설정
-                        workerScheduler.scheduleSensorDataWork(transmissionMode, minuteInterval)
-                        // 화면 갱신을 위해 디바이스 정보 다시 로드
-                        loadDeviceInfo()
-                    }
+                // userId를 가져오기 위해 userSettings를 collect
+                userSettings.collect { settings ->
+                    val userId = settings.userId
+                    loadUserInfo(userId)
                 }
+
+                // 프로젝트 정보 가져오기
+                loadProjects() // 프로젝트를 먼저 가져옵니다.
+
+                println("Device info loaded: $response")
             } catch (e: Exception) {
-                println("Error saving settings: ${e.message}")
+                if (e.message?.contains("410") == true) {
+                    _isDeviceRegistered.value = false
+                    println("Device not registered: ${e.message}")
+                } else {
+                    println("Error loading device info: ${e.message}")
+                }
             }
         }
     }
 
-    public fun loadDeviceLocation() {
+
+    fun loadDeviceLocation() {
         viewModelScope.launch {
             try {
                 _isLoading.value = true
                 val response = apiService.getDevice(deviceId)
-                response.location?.let { location ->
-                    _deviceLocation.value = location  // DeviceLocation 타입이 같으므로 직접 할당
-                    println("Device location loaded: $location")
-                } ?: run {
-                    println("No location data available for device")
-                    _deviceLocation.value = DeviceLocation()  // 기본값 설정
-                }
+                _deviceLocation.value = response.location ?: DeviceLocation()
+                println("Device location loaded: ${_deviceLocation.value}")
             } catch (e: Exception) {
                 println("Error loading device location: ${e.message}")
-                e.printStackTrace()
-                _deviceLocation.value = DeviceLocation()  // 에러 시 기본값 설정
             } finally {
                 _isLoading.value = false
             }
         }
     }
 
-    fun updateDeviceLocation(location: DeviceLocation) {
+    fun registerDevice(projectId: Long, transmissionMode: TransmissionMode, uploadInterval: Int) {
         viewModelScope.launch {
             try {
-                _isLoading.value = true
-                _errorMessage.value = null
-
-                val request = DeviceLocationRequest(
-                    floorLevel = location.floorLevel,
-                    placeType = location.placeType,
-                    description = location.description
+                val request = DeviceRegistrationRequest(
+                    deviceId = deviceId,
+                    projectId = projectId,
+                    transmissionMode = transmissionMode,
+                    uploadInterval = uploadInterval
                 )
-
-                val response = apiService.updateDeviceLocation(deviceId, request)
-                
+                val response = apiService.registerDevice(deviceId, request)
                 if (response.success) {
-                    _deviceLocation.value = location
-                    println("Device location updated successfully")
+                    println("Device registered successfully")
+                    _isDeviceRegistered.value = true
                 } else {
-                    _errorMessage.value = response.message
-                    println("Failed to update device location: ${response.message}")
+                    println("Failed to register device: ${response.message}")
                 }
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to update location: ${e.message}"
-                println("Error updating device location: ${e.message}")
-            } finally {
-                _isLoading.value = false
+                println("Error registering device: ${e.message}")
             }
+        }
+    }
+
+    fun logout() {
+        viewModelScope.launch {
+            tokenManager.clearToken()
         }
     }
 }

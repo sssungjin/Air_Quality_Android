@@ -8,10 +8,10 @@ import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationRequest
 import com.monorama.airmonomatekr.network.api.dto.DeviceRegistrationResponse
 import com.monorama.airmonomatekr.network.api.dto.DeviceResponseDto
 import com.monorama.airmonomatekr.network.api.dto.LogUploadResponse
+import com.monorama.airmonomatekr.network.api.dto.ProjectListResponse
 import com.monorama.airmonomatekr.network.api.dto.ProjectResponse
-import com.monorama.airmonomatekr.network.api.dto.SensorDataPayload
 import com.monorama.airmonomatekr.network.api.dto.UserLoginRequestDto
-import com.monorama.airmonomatekr.network.api.dto.JwtResponseDto
+import com.monorama.airmonomatekr.network.api.dto.UserLoginResponseDto
 import com.monorama.airmonomatekr.network.api.dto.UserRegistrationRequestDto
 import com.monorama.airmonomatekr.network.api.dto.UserResponseDto
 import okhttp3.RequestBody
@@ -41,7 +41,12 @@ interface ApiService {
     ): DeviceRegistrationResponse
 
     @GET("projects")
-    suspend fun getProjects(): ProjectResponse
+    suspend fun getProjects(): ProjectListResponse
+
+    @GET("projects/{projectId}")
+    suspend fun getProject(
+        @Path("projectId") projectId: Long
+    ): ProjectResponse
 
     @PUT("devices/{deviceId}/location")
     suspend fun updateDeviceLocation(
@@ -63,8 +68,11 @@ interface ApiService {
     ): ApiResponse
 
     @POST("user/login")
-    suspend fun login(@Body request: UserLoginRequestDto): JwtResponseDto
+    suspend fun login(@Body request: UserLoginRequestDto): UserLoginResponseDto
 
     @POST("user/register")
     suspend fun registerUser(@Body request: UserRegistrationRequestDto): UserResponseDto
+
+    @GET("user/{id}")
+    suspend fun getUserById(@Path("id") id: Long): UserResponseDto
 }
