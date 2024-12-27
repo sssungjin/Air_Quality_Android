@@ -145,6 +145,10 @@ class BluetoothService : Service() {
                 // BLE 연결 해제
                 bleManager.disconnect()
 
+                // 웹소켓에서 구독 해제
+                val deviceId = bleManager.getDeviceId() // 현재 연결된 디바이스 ID 가져오기
+                webSocketManager.unsubscribe(deviceId)
+
                 // 서비스 상태 초기화
                 _isConnected.value = false
 

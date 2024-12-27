@@ -609,40 +609,19 @@ class BleManager @Inject constructor(
         }
     }
 
+    @SuppressLint("MissingPermission")
     fun disconnect() {
-        println("BleManager: Disconnecting...")
-        dataCollectionJob?.cancel()
-        dataCollectionJob = null
+        bluetoothGatt?.disconnect()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
+        connectedDevice = null
+        _isConnected.value = false // 연결 해제 시 상태 업데이트
+    }
 
-        if (!PermissionHelper.hasBluetoothPermissions(context)) {
-            return
-        }
-
-        try {
-            // 모든 GATT 인스턴스 정리
-            while (gattInstances.isNotEmpty()) {
-                gattInstances.pop().let { gatt ->
-                    if (ActivityCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.BLUETOOTH_CONNECT
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        println("BleManager: Disconnecting GATT instance")
-                        gatt.disconnect()
-                        gatt.close()
-                    }
-                }
-            }
-
-            // 상태 초기화
-            bluetoothGatt = null
-            _sensorLogData.value = null
-            webSocketManager.disconnect()
-
-            println("BleManager: Successfully disconnected all instances")
-        } catch (e: Exception) {
-            println("BleManager: Error during disconnect: ${e.message}")
-            e.printStackTrace()
-        }
+    fun getDeviceId(): String {
+        return Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ANDROID_ID
+        )
     }
 }
