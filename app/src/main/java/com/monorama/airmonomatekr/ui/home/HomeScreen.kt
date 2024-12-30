@@ -21,35 +21,34 @@ import com.monorama.airmonomatekr.service.bluetooth.BluetoothService
 import com.monorama.airmonomatekr.ui.home.components.SensorDataCard
 import com.monorama.airmonomatekr.ui.home.components.SensorDataGrid
 import com.monorama.airmonomatekr.util.PermissionHelper
+import androidx.navigation.NavController
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Settings
 
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel = hiltViewModel(),
     onBluetoothPermissionNeeded: () -> Unit = {},
-    onEnableBluetoothRequest: () -> Unit = {}
+    onEnableBluetoothRequest: () -> Unit = {},
+    navController: NavController
 ) {
     val context = LocalContext.current
     val isScanning by viewModel.isScanning.collectAsState()
     val discoveredDevices by viewModel.discoveredDevices.collectAsState()
     val isConnected by viewModel.isConnected.collectAsState()
+    val isCollectingData by viewModel.isCollectingData.collectAsState()
     var showDeviceList by remember { mutableStateOf(false) }
     val sensorData by viewModel.sensorData.collectAsState()
 
+    LaunchedEffect(Unit) {
+        viewModel.checkConnectionStatus()
+    }
+
+    // handleDisconnect 함수 정의
     fun handleDisconnect() {
-        // 1. 서비스 중지 액션 전송
-        val stopIntent = Intent(context, BluetoothService::class.java).apply {
-            action = BluetoothService.ACTION_STOP_FOREGROUND
-        }
-        context.startService(stopIntent)
-
-        // 2. 연결 해제 액션 전송
-        val disconnectIntent = Intent(context, BluetoothService::class.java).apply {
-            action = BluetoothService.ACTION_DISCONNECT
-        }
-        context.startService(disconnectIntent)
-
-        // 3. ViewModel의 disconnect 호출
-        viewModel.disconnect()
+        viewModel.disconnect() // ViewModel의 disconnect 호출
     }
 
     Column(
@@ -76,7 +75,7 @@ fun HomeScreen(
                 Button(
                     onClick = {
                         if (isConnected) {
-                            handleDisconnect()  // 수정된 부분: disconnect 핸들러 호출
+                            handleDisconnect() // disconnect 핸들러 호출
                         } else {
                             if (!PermissionHelper.hasRequiredPermissions(context)) {
                                 onBluetoothPermissionNeeded()
@@ -95,7 +94,6 @@ fun HomeScreen(
                 }
             }
         }
-
 
         // 블루투스 디바이스 목록 다이얼로그
         if (showDeviceList) {
@@ -145,8 +143,8 @@ fun HomeScreen(
                                     }
                                     println("HomeScreen: Device selected: ${device.name}")
                                     viewModel.connectToDevice(device)
-                                    showDeviceList = false  // 다이얼로그 닫기
-                                    viewModel.stopScan()    // 스캔 중지
+                                    showDeviceList = false
+                                    viewModel.stopScan()
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -216,7 +214,7 @@ fun HomeScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        if (isConnected) {
+        if (isConnected && isCollectingData) {
             Text(
                 text = "Real-time Air Quality",
                 style = MaterialTheme.typography.headlineMedium,
@@ -247,7 +245,6 @@ fun HomeScreen(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-
                     Spacer(modifier = Modifier.height(16.dp))
                     Text(
                         text = "Connect to view real-time air quality data",

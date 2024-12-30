@@ -2,6 +2,7 @@ package com.monorama.airmonomatekr.ui.settings
 
 import android.annotation.SuppressLint
 import android.content.Context
+import android.hardware.usb.UsbDevice.getDeviceId
 import android.provider.Settings
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -133,38 +134,32 @@ class SettingsViewModel @Inject constructor(
     ) {
         viewModelScope.launch {
             try {
-                // 서버에 디바이스 정보 등록
-                selectedProjectId?.let { projectId ->
-                    val request = DeviceRegistrationRequest(
-                        deviceId = deviceId,
-                        projectId = projectId,
-                        userName = userName,
-                        userEmail = email,
-                        transmissionMode = transmissionMode,
-                        uploadInterval = minuteInterval
-                    )
+                // Device Registration API 호출
+                val deviceId = Settings.Secure.getString(
+                    context.contentResolver,
+                    Settings.Secure.ANDROID_ID
+                ) // 현재 안드로이드 디바이스의 ID 가져오기
 
-                    val response = apiService.registerDevice(deviceId, request)
-                    println("Device registration response: ${response.message}")
+                val request = DeviceRegistrationRequest(
+                    deviceId = deviceId, // 디바이스 ID 설정
+                    projectId = selectedProjectId ?: 0L, // 선택된 프로젝트 ID 설정
+                    userName = userName,
+                    userEmail = email, // userEmail 필드 추가
+                    transmissionMode = transmissionMode,
+                    uploadInterval = minuteInterval
+                )
 
-                    if (response.success) {
-                        // 성공적으로 서버에 저장되면 로컬 설정도 업데이트
-                        settingsDataStore.updateSettings(
-                            UserSettings(
-                                projectId = projectId.toString(),
-                                userName = userName,
-                                email = email,
-                                transmissionMode = transmissionMode
-                            )
-                        )
-                        // 스케줄러에 분 단위 설정
-                        workerScheduler.scheduleSensorDataWork(transmissionMode, minuteInterval)
-                        // 화면 갱신을 위해 디바이스 정보 다시 로드
-                        loadDeviceInfo()
-                    }
+                val response = apiService.registerDevice(deviceId, request) // API 호출
+                // API 호출 후 처리
+                if (response.success) {
+                    // 성공적으로 등록된 경우
+                    println("Device registered successfully: ${response.message}")
+                } else {
+                    // 실패한 경우
+                    println("Device registration failed: ${response.message}")
                 }
             } catch (e: Exception) {
-                println("Error saving settings: ${e.message}")
+                println("Error during device registration: ${e.message}")
             }
         }
     }

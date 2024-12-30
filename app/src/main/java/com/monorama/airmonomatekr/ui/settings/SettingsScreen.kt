@@ -71,9 +71,10 @@ fun SettingsScreen(
             .padding(16.dp)
     ) {
         // Project Dropdown
+        var expanded by remember { mutableStateOf(false) } // 드롭다운 상태 관리
         ExposedDropdownMenuBox(
-            expanded = false,
-            onExpandedChange = {}
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
         ) {
             OutlinedTextField(
                 value = selectedProjectName,
@@ -83,13 +84,30 @@ fun SettingsScreen(
                 label = { Text("Project") },
                 trailingIcon = {
                     if (isEditing) {
-                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = false)
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded)
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
                     .menuAnchor()
             )
+
+            // 드롭다운 메뉴 항목 추가
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                projects.forEach { project ->
+                    DropdownMenuItem(
+                        text = { Text(project.projectName) },
+                        onClick = {
+                            selectedProjectName = project.projectName
+                            viewModel.setSelectedProjectId(project.projectId) // 선택된 프로젝트 ID 설정
+                            expanded = false
+                        }
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -113,37 +131,6 @@ fun SettingsScreen(
             modifier = Modifier.fillMaxWidth(),
             enabled = isEditing
         )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Transmission Mode Radio Buttons
-        Text("Transmission Mode", style = MaterialTheme.typography.titleMedium)
-        TransmissionMode.values().forEach { mode ->
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .selectable(
-                        selected = (transmissionMode == mode),
-                        onClick = { if (isEditing) transmissionMode = mode }
-                    ),
-                verticalAlignment = Alignment.CenterVertically // 아이템 정렬
-            ) {
-                RadioButton(
-                    selected = (transmissionMode == mode),
-                    onClick = null, // `Row`의 `onClick`에서 처리하므로 null
-                    enabled = isEditing
-                )
-                Text(
-                    text = when (mode) {
-                        TransmissionMode.REALTIME -> "Real-time"
-                        TransmissionMode.MINUTE -> "Minute"
-                        TransmissionMode.DAILY -> "Daily"
-                    },
-                    modifier = Modifier.padding(start = 8.dp)
-                )
-            }
-
-        }
 
         Spacer(modifier = Modifier.height(16.dp))
 

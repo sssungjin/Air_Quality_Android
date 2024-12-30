@@ -39,6 +39,8 @@ class HomeViewModel @Inject constructor(
 
     val sensorData = bleManager.sensorLogData
 
+    val webSocketConnected = webSocketManager.isConnected.value
+
     fun startScan() {
         viewModelScope.launch {
             if (!isBluetoothEnabled()) {
@@ -54,7 +56,6 @@ class HomeViewModel @Inject constructor(
             }
         }
     }
-
 
     fun stopScan() {
         viewModelScope.launch {
@@ -83,7 +84,8 @@ class HomeViewModel @Inject constructor(
                 println("HomeViewModel: Attempting to connect to device: ${device.name}")
                 stopScan() // 스캔 중지
 
-                if (bleManager.connect(device.address)) {
+                // BluetoothDevice 객체를 사용하여 연결
+                if (bleManager.connect(device)) {
                     _isConnected.value = true
                     _isCollectingData.value = true
                     println("HomeViewModel: Connection successful")
@@ -140,6 +142,17 @@ class HomeViewModel @Inject constructor(
         }
     }
 
+    fun onMenuNavigated() {
+        // 메뉴로 이동할 때 연결 상태 유지
+        // UI 업데이트를 위한 상태 설정
+        if (_isConnected.value) {
+            println("HomeViewModel: Connection is still active.")
+            // UI 업데이트를 위한 추가 로직이 필요할 수 있습니다.
+        } else {
+            println("HomeViewModel: Connection is not active.")
+        }
+    }
+
     override fun onCleared() {
         super.onCleared()
         viewModelScope.launch {
@@ -175,4 +188,17 @@ class HomeViewModel @Inject constructor(
 
         return true
     }
+
+    fun checkConnectionStatus() {
+        viewModelScope.launch {
+            // BLE 연결 상태 확인
+            _isConnected.value = bleManager.isConnected.value
+            println("HomeViewModel: BLE Connected: ${_isConnected.value}")
+
+            // WebSocket 연결 상태 확인
+            _isCollectingData.value = webSocketManager.isConnected.value
+            println("HomeViewModel: WebSocket Connected: ${_isCollectingData.value}")
+        }
+    }
+
 }

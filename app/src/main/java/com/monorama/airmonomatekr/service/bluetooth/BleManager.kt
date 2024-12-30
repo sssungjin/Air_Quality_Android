@@ -58,6 +58,12 @@ class BleManager @Inject constructor(
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    // 연결 상태를 나타내는 StateFlow
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> get() = _isConnected
+
+    private var connectedDevice: BluetoothDevice? = null // 현재 연결된 블루투스 장치
+
     init {
         CoroutineScope(Dispatchers.IO).launch {
             settingsDataStore.userSettings.collect { settings ->
@@ -434,56 +440,13 @@ class BleManager @Inject constructor(
         currentScanCallback = null
     }
 
-    fun connect(deviceAddress: String): Boolean {
-        println("BleManager: Attempting to connect to device: $deviceAddress")
-
-        // 기존 연결이 있으면 해제
-        if (bluetoothGatt != null) {
-            println("BleManager: Already connected to a device")
-            disconnect()
-        }
-
-        bluetoothAdapter?.let { adapter ->
-            try {
-                val device = adapter.getRemoteDevice(deviceAddress)
-
-                // SDK 버전별 연결 처리
-                return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    // Android 12 이상
-                    if (ActivityCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.BLUETOOTH_CONNECT
-                        ) == PackageManager.PERMISSION_GRANTED) {
-                        bluetoothGatt = device.connectGatt(
-                            context,
-                            false,  // autoConnect false로 설정
-                            gattCallback,
-                            BluetoothDevice.TRANSPORT_LE
-                        )
-                        println("BleManager: High SDK - Connection attempt result: ${bluetoothGatt != null}")
-                        bluetoothGatt != null
-                    } else {
-                        println("BleManager: Bluetooth connect permission not granted")
-                        false
-                    }
-                } else {
-                    // Android 11 이하
-                    @Suppress("DEPRECATION")
-                    bluetoothGatt = device.connectGatt(
-                        context,
-                        true,  // autoConnect를 true로 설정
-                        gattCallback
-                    )
-                    println("BleManager: Low SDK - Connection attempt result: ${bluetoothGatt != null}")
-                    bluetoothGatt != null
-                }
-            } catch (e: Exception) {
-                println("BleManager: Connection error: ${e.message}")
-                e.printStackTrace()
-                disconnect()
-            }
-        }
-        return false
+    @SuppressLint("MissingPermission")
+    fun connect(device: BluetoothDevice): Boolean {
+        // 연결 로직 구현
+        bluetoothGatt = device.connectGatt(context, false, gattCallback)
+        connectedDevice = device
+        _isConnected.value = true // 연결 성공 시 상태 업데이트
+        return bluetoothGatt != null
     }
 
 
@@ -646,40 +609,19 @@ class BleManager @Inject constructor(
         }
     }
 
+    @SuppressLint("MissingPermission")
     fun disconnect() {
-        println("BleManager: Disconnecting...")
-        dataCollectionJob?.cancel()
-        dataCollectionJob = null
+        bluetoothGatt?.disconnect()
+        bluetoothGatt?.close()
+        bluetoothGatt = null
+        connectedDevice = null
+        _isConnected.value = false // 연결 해제 시 상태 업데이트
+    }
 
-        if (!PermissionHelper.hasBluetoothPermissions(context)) {
-            return
-        }
-
-        try {
-            // 모든 GATT 인스턴스 정리
-            while (gattInstances.isNotEmpty()) {
-                gattInstances.pop().let { gatt ->
-                    if (ActivityCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.BLUETOOTH_CONNECT
-                        ) == PackageManager.PERMISSION_GRANTED
-                    ) {
-                        println("BleManager: Disconnecting GATT instance")
-                        gatt.disconnect()
-                        gatt.close()
-                    }
-                }
-            }
-
-            // 상태 초기화
-            bluetoothGatt = null
-            _sensorLogData.value = null
-            webSocketManager.disconnect()
-
-            println("BleManager: Successfully disconnected all instances")
-        } catch (e: Exception) {
-            println("BleManager: Error during disconnect: ${e.message}")
-            e.printStackTrace()
-        }
+    fun getDeviceId(): String {
+        return Settings.Secure.getString(
+            context.contentResolver,
+            Settings.Secure.ANDROID_ID
+        )
     }
 }

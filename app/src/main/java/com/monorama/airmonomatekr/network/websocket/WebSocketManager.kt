@@ -41,7 +41,7 @@ class WebSocketManager @Inject constructor(
 
     private val coroutineScope = CoroutineScope(Dispatchers.IO)
     private val _isConnected = MutableStateFlow(false)
-    val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
+    val isConnected: StateFlow<Boolean> get() = _isConnected
 
     private var lastSendTime: Long = 0
     private val SEND_INTERVAL = Constants.UploadInterval.SECOND // 10초
@@ -173,11 +173,20 @@ class WebSocketManager @Inject constructor(
             println("WebSocketManager: Sent unsubscribe message: $unsubscribeMessage")
         }
 
-        // Close WebSocket connection
-        webSocket?.close(1000, "Normal closure")
-        webSocket = null
-        _isConnected.value = false
-        println("WebSocketManager: Disconnected Successfully")
+        // 웹소켓 연결은 유지
+        // _isConnected.value = false
+        println("WebSocketManager: Unsubscribed successfully, connection remains open")
+    }
+
+    fun unsubscribe(deviceId: String) {
+        val unsubscribeMessage = JsonObject().apply {
+            addProperty("type", "UNSUBSCRIBE")
+            add("payload", JsonObject().apply {
+                addProperty("topic", "device/$deviceId")
+            })
+        }
+        webSocket?.send(unsubscribeMessage.toString())
+        println("WebSocketManager: Sent unsubscribe message: $unsubscribeMessage")
     }
 
 }
